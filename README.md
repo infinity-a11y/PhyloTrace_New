@@ -72,8 +72,8 @@ Number of currently supported bacterial typing schemes:
 [![PubMLST Schemes](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/infinity-a11y/15ef48327c3dcda275169fb50a7a2b1e/raw/pubmlst_schemes.json)](https://pubmlst.org/)
 
 <div style="display: flex; justify-content: space-between;">
-<img src="docs/resources/manage_schemes.png" width="47.5%"/>
-<img src="docs/resources/loci_info.png" width="48.5%"/>
+<img src="app/static/images/manage_schemes.png" width="47.5%"/>
+<img src="app/static/images/loci_info.png" width="48.5%"/>
 </div>
 
 <br>
@@ -89,8 +89,8 @@ Number of currently supported bacterial typing schemes:
 Whole-genome assemblies can be entered into the pipeline and are automatically analyzed at high speed. Using the downloaded cgMLST scheme, the bacterial genome is aligned to the known variants at the respective genetic target. By iterating this process over all genes that are part of the core genome, an individual allele profile is generated. If a potential new genetic variant is discovered, it is checked whether the existing allele is still capable of producing a functional protein. Successfully typed assemblies are appended to the local database in real time.
 
 <div style="display: flex; justify-content: space-between;">
-<img src="docs/resources/typing_start.png" width="48%"/>
-<img src="docs/resources/typing_results.png" width="48%"/>
+<img src="app/static/images/typing_start.png" width="48%"/>
+<img src="app/static/images/typing_results.png" width="48%"/>
 </div>
 
 <br>
@@ -106,8 +106,8 @@ Whole-genome assemblies can be entered into the pipeline and are automatically a
 Step-by-step the database is filled with typed isolates and the connected metadata. The database browser provides full control allowing to edit, delete and inspect the entries that were added so far. It features several functions, e.g. to export the table, compare allelic profiles or to introduce custom variables with information about presence/absence of antimicrobial resistances, gene expression values or any other characteristic, to answer individual research questions.
 
 <div style="display: flex; justify-content: space-between;">
-<img src="docs/resources/browse_entries.png" width="48%"/>
-<img src="docs/resources/dist_matrix.png" width="48%"/>
+<img src="app/static/images/browse_entries.png" width="48%"/>
+<img src="app/static/images/dist_matrix.png" width="48%"/>
 </div>
 
 <br>
@@ -123,8 +123,8 @@ Step-by-step the database is filled with typed isolates and the connected metada
 Create and customize sophisticated hierarchic trees (Neighbour-Joining & UPGMA) or networks (Minimum-spanning) to visualize the underlying relationship between the isolates in your local database. The plots can be heavily modified and enriched with useful information e.g. by mapping previously added custom variables. The resulting visuals can be saved in multiple formats and even included in a report document that can be generated from within the app.
 
 <div style="display: flex; justify-content: space-between;">
-<img src="docs/resources/mst_visualization.png" width="54%"/>
-<img src="docs/resources/2025-03-18_Bordetella_pertussis_CM_Tree.png" width="42%"/>
+<img src="app/static/images/mst_visualization.png" width="54%"/>
+<img src="app/static/images/2025-03-18_Bordetella_pertussis_CM_Tree.png" width="42%"/>
 </div>
 
 <br>
@@ -140,8 +140,8 @@ Create and customize sophisticated hierarchic trees (Neighbour-Joining & UPGMA) 
 Screen isolates in seconds for known resistance, virulence and stress genes using an interface that wraps around the proven AMRFinder tool. Visualize the presence or absence of these markers along with user-defined variables among isolates in a fully interactive heatmap.
 
 <div style="display: flex; justify-content: space-between;">
-<img src="docs/resources/amr_screening.png" width="48%"/>
-<img src="docs/resources/amr_heatmap.png" width="49%"/>
+<img src="app/static/images/amr_screening.png" width="48%"/>
+<img src="app/static/images/amr_heatmap.png" width="49%"/>
 </div>
 
 <br>
@@ -306,7 +306,7 @@ bash run_phylotrace.sh
 
 **Linux** - Start PhyloTrace by using the launcher in Applications Menu. A browser tab with the app will automatically open in the default browser.
 
-<img src="docs/resources/app_icon.png" width="60%"/> <br>
+<img src="app/static/images/app_icon.png" width="60%"/> <br>
 
 **Launching from terminal (and for Microsoft Windows)**
 
