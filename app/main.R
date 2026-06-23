@@ -107,7 +107,7 @@ server <- function(id) {
     # Confirmed shutdown
     observeEvent(input$conf_shutdown, {
       removeModal()
-      runjs("window.close();")
+      runjs("window.open('', '_self').close();")
       later::later(stopApp, delay = 0.5)
     })
 
