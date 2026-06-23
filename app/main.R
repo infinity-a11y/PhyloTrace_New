@@ -43,7 +43,7 @@ ui <- function(id) {
     title = div(
       id = "navbar-title",
       tags$img(
-        src = "static/images/PhyloTrace_flat_48.png",
+        src = "static/images/PhyloTrace_flat_128.png",
       ),
       div("PhyloTrace")
     ),
@@ -107,7 +107,7 @@ server <- function(id) {
     # Confirmed shutdown
     observeEvent(input$conf_shutdown, {
       removeModal()
-      runjs("window.open('', '_self').close();")
+      runjs("window.close();")
       later::later(stopApp, delay = 0.5)
     })
 

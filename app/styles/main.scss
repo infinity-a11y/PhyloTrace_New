@@ -77,6 +77,14 @@
     justify-self: center;
 }
 
+#app-scheme_browser-scheme_title {
+    font-size: 1.5em;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid #000;
+    margin-bottom: 1rem;
+    font-family: monospace;
+}
+
 // Modal window
 .modal-footer .btn {
     width: 150px !important;
