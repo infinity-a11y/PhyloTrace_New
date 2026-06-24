@@ -35,6 +35,10 @@
     margin-bottom: 2rem;
 }
 
+.boxxy .spinner--3 {
+    border: 2px solid rgb(0 0 0);
+}
+
 #app-startup-phylotrace_large img {
     height: 100%;
 }
@@ -85,6 +89,176 @@
     font-family: monospace;
 }
 
+// Scheme metadata table: static, non-interactive rows.
+// Row selection is disabled in the server (selection = "none"); these rules
+// stop the cursor implying clickability and neutralise any theme hover tint
+// (DT applies hover/selection as an inset box-shadow, not a background-color).
+#app-scheme_browser-scheme_table table.dataTable tbody tr,
+#app-scheme_browser-scheme_table table.dataTable tbody td {
+    cursor: default;
+    font-size: small;
+}
+
+#app-scheme_browser-scheme_table table.dataTable.hover>tbody>tr:hover>*,
+#app-scheme_browser-scheme_table table.dataTable.display>tbody>tr:hover>* {
+    box-shadow: none !important;
+}
+
+#app-scheme_browser-species_img {
+    height: fit-content !important;
+}
+
+#app-scheme_browser-species_img img {
+    display: block;
+    width: 100%;
+    max-height: 300px;
+}
+
+// Scheme browser loading spinner
+.scheme-waiter {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+.scheme-waiter_text {
+    color: white;
+    margin-top: 2.5rem;
+    font-size: 1rem;
+}
+
+// Details card: responsive image + metadata layout
+.species-card_article {
+    display: flow-root; // contain the floated image
+}
+
+.species-card_media {
+    float: right;
+    width: 40%;
+    max-width: 340px;
+    margin: 0 0 1rem 1.5rem;
+}
+
+// Details card: species metadata (taxonomy + description)
+.species-details_empty {
+    color: #6c7a89;
+    font-style: italic;
+}
+
+.species-details_header {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 0.25rem;
+}
+
+.species-details_name {
+    font-size: 1.3rem;
+    font-weight: 600;
+    color: #1f2d3d;
+}
+
+.species-details_rank {
+    align-self: center;
+    display: inline-flex;
+    align-items: center;
+    height: 1.4rem;
+    text-transform: uppercase;
+    font-size: 0.62rem;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    color: #2da700;
+    background: #f1f4f8;
+    padding: 0 0.5rem;
+    border-radius: 10px;
+}
+
+.species-details_taxid {
+    align-self: center;
+    display: inline-flex;
+    align-items: center;
+    height: 1.4rem;
+    font-family: monospace;
+    font-size: 0.72rem;
+    text-decoration: none;
+    background: #f1f4f8;
+    padding: 0 0.5rem;
+    border-radius: 6px;
+    white-space: nowrap;
+}
+
+.species-details_lineage {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin: 0.6rem 0 1rem;
+}
+
+.species-details_chip {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    background: #f1f4f8;
+    border-radius: 8px;
+    padding: 0.3rem 0.6rem;
+}
+
+.species-details_chip-rank {
+    font-size: 0.58rem;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    color: #6c7a89;
+}
+
+.species-details_chip-value {
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: #2c3e50;
+}
+
+.species-details_summary {
+    line-height: 1.55;
+    color: #3a3f44;
+    font-size: 0.92rem;
+    text-align: justify;
+    margin: 0.5rem 0 0;
+}
+
+#scheme-download-selection {
+    display: flex;
+    gap: 2rem;
+}
+
+#scheme-download-selection .form-group {
+    margin-bottom: unset;
+    width: 600px;
+}
+
+// Push the "cgMLST" subtext to the far right of each scheme picker option.
+// bootstrap-select nests the subtext inside the option's .text span, so the
+// span itself must span the full width and lay its children out edge-to-edge.
+#scheme-download-selection .dropdown-menu li a .text {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+}
+
+#scheme-download-selection .dropdown-menu li a .text .text-muted {
+    margin-left: 1rem;
+}
+
+.tab-pane[data-value="scheme_browser_panel"] .bslib-card .card-header {
+    padding-bottom: 8px;
+}
+
+// #scheme-download-selection .dropdown-menu {
+//     max-height: calc(100% - 50px) !important;
+//     height: 100% !important;
+// }
+
 // Modal window
 .modal-footer .btn {
     width: 150px !important;
@@ -119,9 +293,9 @@
 }
 
 #navbar-title>div {
-    font-size: 21px;
     font-family: monospace;
-    margin-top: 3px;
+    margin-top: 1px;
+    font-variant-caps: all-petite-caps;
 }
 
 .navbar-brand {

@@ -50,7 +50,7 @@ ui <- function(id) {
     window_title = "PhyloTrace",
     navbar_options = navbar_options(underline = TRUE),
     nav_panel(
-      title = "Startup",
+      title = "Load Database",
       value = "startup_panel",
       startup$ui(ns("startup"))
     ),
