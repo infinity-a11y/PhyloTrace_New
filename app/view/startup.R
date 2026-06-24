@@ -27,11 +27,8 @@ box::use(
   fs[dir_ls, path_home],
   bslib[page_fillable],
   shinyFiles[
-    shinyDirChoose,
     shinyFileChoose,
     shinyFilesButton,
-    shinyDirButton,
-    parseDirPath,
     parseFilePaths
   ],
   DT[DTOutput, renderDT, datatable],

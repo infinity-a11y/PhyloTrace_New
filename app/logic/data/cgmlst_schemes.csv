@@ -4,8 +4,8 @@
 3,Bordetella_pertussis,Bpertussis
 4,Brucella_melitensis,Bmelitensis
 5,Brucella_spp,Brucella
-6,Burkholderia_mallei_(RKI),Bmallei_rki
-7,Burkholderia_mallei_(FLI),Bmallei_fli
+6,Burkholderia_maller_(RKI),Bmallei_fli
+7,Burkholderia_mallei_(FLI),Bmallei_rki
 8,Burkholderia_pseudomallei,Bpseudomallei
 9,Campylobacter_jejuni/coli,Cjejuni_complex
 10,Clostridioides_difficile,Cdifficile
@@ -21,7 +21,7 @@
 20,Klebsiella_pneumoniae/variicola/quasipneumoniae,Kpneumoniae_complex
 21,Legionella_pneumophila,Lpneumophila
 22,Listeria_monocytogenes,Lmonocytogenes
-23,Mycobacterium_tuberculosis/bovis/africanum/canettii_complex,Mtuberculosis_complex
+23,Mycobacterium_tuberculosis/bovis/africanum/canettii,Mtuberculosis_complex
 24,Mycobacteroides_abscessus,Mabscessus
 25,Mycoplasma_gallisepticum,Mgallisepticum
 26,Paenibacillus_larvae,Plarvae
@@ -34,7 +34,7 @@
 33,Streptococcus_pyogenes,Spyogenes
 34,Yersinia_enterocolitica,Yenterocolitica
 35,Citrobacter_freundii,Cfreundii
-36,Citrobacter_freundii/portucalensis/braakii/europaeus,Cfreundii
+36,Citrobacter_freundii/portucalensis/braakii/europaeus,Cfreundii_complex
 37,Enterobacter_hormaechei,Ehormaechei
 38,Morganella_morganii,Mmorganii
 39,Proteus_mirabilis,Pmirabilis

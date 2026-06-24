@@ -35,8 +35,9 @@
     margin-bottom: 2rem;
 }
 
-.boxxy .spinner--3 {
-    border: 2px solid rgb(0 0 0);
+#scheme-load {
+    font-size: 2em;
+    font-family: monospace;
 }
 
 #app-startup-phylotrace_large img {
@@ -89,10 +90,6 @@
     font-family: monospace;
 }
 
-// Scheme metadata table: static, non-interactive rows.
-// Row selection is disabled in the server (selection = "none"); these rules
-// stop the cursor implying clickability and neutralise any theme hover tint
-// (DT applies hover/selection as an inset box-shadow, not a background-color).
 #app-scheme_browser-scheme_table table.dataTable tbody tr,
 #app-scheme_browser-scheme_table table.dataTable tbody td {
     cursor: default;
@@ -114,7 +111,6 @@
     max-height: 300px;
 }
 
-// Scheme browser loading spinner
 .scheme-waiter {
     display: flex;
     flex-direction: column;
@@ -128,29 +124,23 @@
     font-size: 1rem;
 }
 
-// Details card: responsive image + metadata layout
 .species-card_article {
-    display: flow-root; // contain the floated image
+    display: flow-root;
 }
 
 .species-card_media {
     float: right;
     width: 40%;
     max-width: 340px;
-    margin: 0 0 1rem 1.5rem;
+    margin: 0 0 0 1.5rem;
 }
 
-// Details card: species metadata (taxonomy + description)
 .species-details_empty {
     color: #6c7a89;
     font-style: italic;
 }
 
 .species-details_header {
-    display: flex;
-    align-items: baseline;
-    flex-wrap: wrap;
-    gap: 0.5rem;
     margin-bottom: 0.25rem;
 }
 
@@ -158,10 +148,12 @@
     font-size: 1.3rem;
     font-weight: 600;
     color: #1f2d3d;
+    margin-right: 0.5rem;
 }
 
 .species-details_rank {
-    align-self: center;
+    vertical-align: middle;
+    margin-right: 0.5rem;
     display: inline-flex;
     align-items: center;
     height: 1.4rem;
@@ -176,7 +168,7 @@
 }
 
 .species-details_taxid {
-    align-self: center;
+    vertical-align: middle;
     display: inline-flex;
     align-items: center;
     height: 1.4rem;
@@ -228,17 +220,28 @@
 
 #scheme-download-selection {
     display: flex;
+    flex-wrap: wrap;
     gap: 2rem;
 }
 
 #scheme-download-selection .form-group {
     margin-bottom: unset;
-    width: 600px;
+    min-width: 600px;
 }
 
-// Push the "cgMLST" subtext to the far right of each scheme picker option.
-// bootstrap-select nests the subtext inside the option's .text span, so the
-// span itself must span the full width and lay its children out edge-to-edge.
+#app-scheme_browser-scheme_download {
+    min-width: 235px;
+}
+
+#app-scheme_browser-download_status_ui {
+    flex-basis: 100%;
+    max-width: fit-content;
+}
+
+#app-scheme_browser-download_status {
+    overflow-wrap: break-word;
+}
+
 #scheme-download-selection .dropdown-menu li a .text {
     display: flex;
     justify-content: space-between;
@@ -250,16 +253,37 @@
     margin-left: 1rem;
 }
 
+#scheme-download-selection .filter-option-inner-inner {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+#scheme-download-selection .filter-option-inner-inner .text-muted {
+    margin-left: 1rem;
+    margin-right: 1rem;
+}
+
+.spinner-custom {
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+}
+
 .tab-pane[data-value="scheme_browser_panel"] .bslib-card .card-header {
     padding-bottom: 8px;
 }
 
-// #scheme-download-selection .dropdown-menu {
-//     max-height: calc(100% - 50px) !important;
-//     height: 100% !important;
-// }
+.tab-pane[data-value="scheme_browser_panel"] .waiter-overlay {
+    background: rgba(0, 0, 0, 0);
+    background-color: #ffffffde;
+    background-color: rgb(51 62 72 / 71%) !important;
+    backdrop-filter: blur(1px);
+    border-radius: 8px;
+}
 
-// Modal window
+.waiter-overlay // Modal window
+
 .modal-footer .btn {
     width: 150px !important;
 }
@@ -277,9 +301,6 @@
 .sF-breadcrumps {
     width: fit-content !important;
 }
-
-// End File modal window
-
 
 // Navbar
 #navbar-title {
@@ -305,5 +326,3 @@
 .navbar>.container-fluid {
     gap: 3rem;
 }
-
-// End Navbar

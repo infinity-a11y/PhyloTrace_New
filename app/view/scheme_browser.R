@@ -16,8 +16,15 @@ box::use(
     imageOutput,
     renderImage,
     actionButton,
-    icon
+    icon,
+    reactiveValues,
+    observeEvent,
+    tagList,
+    h5,
+    observe,
+    textInput
   ],
+  shinyjs[disabled, useShinyjs, enable, disable],
   bslib[
     navset_card_tab,
     page_fillable,
@@ -33,13 +40,16 @@ box::use(
     as_fillable_container,
     as_fill_carrier
   ],
-  shinyWidgets[pickerInput],
+  shinyWidgets[pickerInput, show_toast],
   DT[DTOutput, renderDT, datatable],
-  waiter[autoWaiter, spin_3],
+  waiter[autoWaiter, spin_flower, Waiter, transparent],
+  fs[path_home],
+  shinyFiles[shinyDirButton, shinyDirChoose, parseDirPath]
 )
 
 box::use(
   app / logic / schemes[cgmlst_org_schemes],
+  app / logic / pymlst[download_cgmlst_scheme],
   app /
     logic /
     scheme_browser[get_scheme_overview, get_species_img, get_species_details]
@@ -50,68 +60,88 @@ ui <- function(id) {
   ns <- NS(id)
 
   page_fillable(
+    useShinyjs(),
     autoWaiter(
       id = ns("scheme_table"),
       html = div(
         class = "scheme-waiter",
-        spin_3(),
+        spin_flower(),
         p("Fetching metadata", class = "scheme-waiter_text")
       ),
       color = "black"
     ),
     as_fill_carrier(
-      navset_card_tab(
-        full_screen = FALSE,
-        title = NULL,
-        nav_panel(
-          "Scheme Download",
-          div(
-            id = "scheme-download-selection",
-            uiOutput(ns("scheme_selection")),
-            actionButton(
-              ns("scheme_download"),
-              "Download Scheme",
-              icon = icon("download"),
-            )
-          ),
-          layout_columns(
-            card(
-              full_screen = TRUE,
-              card_header(
-                class = "bg-dark",
-                "Scheme Metadata"
+      div(
+        id = ns("scheme-download-container"),
+        navset_card_tab(
+          full_screen = FALSE,
+          title = NULL,
+          nav_panel(
+            "Scheme Download",
+            div(
+              id = "scheme-download-selection",
+              uiOutput(ns("scheme_selection")),
+              shinyDirButton(
+                ns("download_location"),
+                "Select Location",
+                icon = icon("folder-open"),
+                title = "Choose a location for a new database",
+                buttonType = "default",
+                root = path_home(),
+                multiple = FALSE
               ),
-              card_body(as_fill_item(uiOutput(ns("scheme_overview"))))
+              uiOutput(ns("db_name_input")),
+              uiOutput(ns("selected_dir")),
+              disabled(
+                actionButton(
+                  ns("scheme_download"),
+                  "Download Scheme",
+                  icon = icon("download")
+                )
+              ),
+              div(
+                id = ns("download_status_ui"),
+                uiOutput(ns("download_status"))
+              )
             ),
-            as_fillable_container(
-              as_fill_item(
-                card(
-                  full_screen = TRUE,
-                  card_header(
-                    class = "bg-dark",
-                    "Details"
-                  ),
-                  card_body(
-                    fillable = FALSE,
-                    # Newspaper-style flow: image floats, text wraps around it
-                    div(
-                      class = "species-card_article",
+            layout_columns(
+              card(
+                full_screen = TRUE,
+                card_header(
+                  class = "bg-dark",
+                  "Scheme Metadata"
+                ),
+                card_body(as_fill_item(uiOutput(ns("scheme_overview"))))
+              ),
+              as_fillable_container(
+                as_fill_item(
+                  card(
+                    full_screen = TRUE,
+                    card_header(
+                      class = "bg-dark",
+                      "Details"
+                    ),
+                    card_body(
+                      fillable = FALSE,
                       div(
-                        class = "species-card_media",
-                        imageOutput(ns("species_img"), height = "auto")
-                      ),
-                      uiOutput(ns("species_details")),
-                      uiOutput(ns("species_summary"))
+                        class = "species-card_article",
+                        div(
+                          class = "species-card_media",
+                          imageOutput(ns("species_img"), height = "auto")
+                        ),
+                        uiOutput(ns("species_details")),
+                        uiOutput(ns("species_summary"))
+                      )
                     )
                   )
                 )
               )
             )
+          ),
+          nav_panel(
+            "Custom Scheme",
+            "Coming soon ..."
           )
-        ),
-        nav_panel(
-          "Custom Scheme",
-          "Coming soon ..."
         )
       )
     )
@@ -123,7 +153,7 @@ server <- function(id) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
 
-    ### Sidebar UI elements
+    Scheme_Browser <- reactiveValues(download_status = "")
 
     # Render scheme selector
     output$scheme_selection <- renderUI(
@@ -137,7 +167,7 @@ server <- function(id) {
         options = list(
           `live-search` = TRUE,
           size = 10,
-          showSubtext = TRUE
+          `show-subtext` = TRUE
         )
       )
     )
@@ -160,6 +190,7 @@ server <- function(id) {
       }
     })
 
+    # Render scheme info table
     output$scheme_table <- renderDT({
       req(is.data.frame(scheme_overview()))
 
@@ -174,6 +205,7 @@ server <- function(id) {
       )
     })
 
+    # Render species img
     output$species_img <- renderImage(
       {
         req(input$scheme_selector)
@@ -183,14 +215,14 @@ server <- function(id) {
       deleteFile = FALSE
     )
 
-    # Enriched species metadata (taxonomy + description), looked up once
+    # Enriched species metadata (taxonomy + description)
     species_record <- reactive({
       req(input$scheme_selector)
 
       get_species_details(input$scheme_selector)
     })
 
-    # Render title + taxonomy (sits left of the image)
+    # Render title + taxonomy
     output$species_details <- renderUI({
       details <- species_record()
 
@@ -215,20 +247,17 @@ server <- function(id) {
         )
       })
 
-      ncbi_url <- paste0(
-        "https://www.ncbi.nlm.nih.gov/Taxonomy/Browser/wwwtax.cgi?id=",
-        details$ncbi_taxid
-      )
-
       div(
         class = "species-details",
-        # Title row: scientific name, taxonomic rank, NCBI TaxID
         div(
           class = "species-details_header",
           span(em(input$scheme_selector), class = "species-details_name"),
           span(details$rank, class = "species-details_rank"),
           a(
-            href = ncbi_url,
+            href = paste0(
+              "https://www.ncbi.nlm.nih.gov/Taxonomy/Browser/wwwtax.cgi?id=",
+              details$ncbi_taxid
+            ),
             target = "_blank",
             class = "species-details_taxid",
             paste0("NCBI:txid", details$ncbi_taxid)
@@ -245,6 +274,158 @@ server <- function(id) {
       req(!is.null(details), !is.null(details$summary))
 
       p(details$summary, class = "species-details_summary")
+    })
+
+    # Download location directory chooser
+    shinyDirChoose(
+      input,
+      "download_location",
+      roots = c(Home = path_home(), Root = "/"),
+      defaultRoot = "Home",
+      session = session
+    )
+
+    output$db_name_input <- renderUI({
+      textInput(
+        ns("db_name"),
+        "Choose name",
+        value = gsub(" ", "_", gsub("/", "_", input$scheme_selector))
+      )
+    })
+
+    output$selected_dir <- renderUI({
+      req(input$db_name)
+
+      download_path <- parseDirPath(
+        roots = c(Home = path_home(), Root = "/"),
+        input$download_location
+      )
+
+      if (
+        !length(download_path) ||
+          !is.character(download_path)
+      ) {
+        "No location selected ..."
+      } else {
+        paste(
+          "Target location:",
+          file.path(download_path, paste0(input$db_name, ".db"))
+        )
+      }
+    })
+
+    # Observe download button status
+    observe({
+      message(paste(Sys.time(), TRUE))
+
+      download_path <- parseDirPath(
+        roots = c(Home = path_home(), Root = "/"),
+        input$download_location
+      )
+
+      if (
+        !is.null(input$db_name) &&
+          length(input$db_name) &&
+          length(download_path) &&
+          is.character(download_path)
+      ) {
+        message("ENABLE")
+        enable("scheme_download")
+      } else {
+        message("DISABLE")
+        disable("scheme_download")
+      }
+    }) |>
+      shiny::bindEvent(list(input$db_name, input$download_location))
+
+    # Event scheme download
+    observeEvent(input$scheme_download, {
+      download_path <- parseDirPath(
+        roots = c(Home = path_home(), Root = "/"),
+        input$download_location
+      )
+
+      db_location <- file.path(download_path, paste0(input$db_name, ".db"))
+
+      # If database already exists exit
+      if (file.exists(db_location)) {
+        show_toast(
+          title = NULL,
+          text = paste(db_location, "already exists"),
+          type = "error",
+          timer = 5000,
+          timerProgressBar = TRUE
+        )
+        return()
+      }
+
+      Scheme_Browser$download_status <- "Downloading ..."
+
+      waiting_screen <- div(
+        class = "spinner-custom",
+        spin_flower(),
+        div(
+          h5("Downloading ..."),
+          div(id = "scheme-load", input$scheme_selector)
+        )
+      )
+
+      # Define spinner
+      w <- Waiter$new(
+        id = ns("scheme-download-container"),
+        html = waiting_screen
+      )
+      w$show()
+      on.exit(w$hide())
+
+      # # Define DB location
+      # db_name <- gsub(" ", "_", gsub("/", "_", input$scheme_selector))
+      # db_location <- file.path(
+      #   tempdir(),
+      #   paste0(db_name, ".db")
+      # )
+      # n <- 1
+      # while (file.exists(db_location)) {
+      #   db_location <- file.path(
+      #     tempdir(),
+      #     paste0(input$scheme_selector, n, ".db")
+      #   )
+      #   n <- n + 1
+      # }
+
+      # Run download
+      status <- download_cgmlst_scheme(
+        input$scheme_selector,
+        db_location,
+        env_name = "pymlst"
+      )
+
+      # Check download process status
+      if (status$status == 1 | isFALSE(file.exists(db_location))) {
+        # Case download has exit status 1
+        download_status <- paste(
+          "Download of",
+          input$scheme_selector,
+          "failed"
+        )
+      } else if (status$status == 0) {
+        # Case download has exit status 0
+        download_status <- paste(
+          "Download of",
+          input$scheme_selector,
+          "was successful."
+        )
+      }
+
+      # Return status
+      show_toast(
+        title = NULL,
+        text = download_status,
+        type = ifelse(status$status == 0, "success", "error"),
+        timer = 5000,
+        timerProgressBar = TRUE
+      )
+      output$download_status <- renderUI(download_status)
     })
   })
 }

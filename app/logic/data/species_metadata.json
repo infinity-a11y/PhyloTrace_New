@@ -373,7 +373,7 @@
     "summary_source": "synthesized"
   },
   {
-    "species": "Mycobacterium_tuberculosis/bovis/africanum/canettii_complex",
+    "species": "Mycobacterium_tuberculosis/bovis/africanum/canettii",
     "abb": "Mtuberculosis_complex",
     "query_name": "Mycobacterium tuberculosis",
     "ncbi_taxid": 1773,
