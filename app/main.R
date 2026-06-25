@@ -32,6 +32,7 @@ box::use(
   shinyjs[runjs],
 )
 box::use(
+  app / logic / functions[render_info],
   app / view / startup,
   app / view / scheme_browser,
 )

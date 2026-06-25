@@ -32,6 +32,7 @@ box::use(
     parseFilePaths
   ],
   DT[DTOutput, renderDT, datatable],
+  shinyjs[useShinyjs, disabled]
 )
 
 box::use(
@@ -44,6 +45,7 @@ ui <- function(id) {
   ns <- NS(id)
 
   page_fillable(
+    useShinyjs(),
     imageOutput(ns("phylotrace_large")),
     div(
       class = "startup-ui",
@@ -104,6 +106,8 @@ server <- function(id, external_db = shiny::reactive(NULL)) {
     # Render PhyloTrace logo
     output$phylotrace_large <- renderImage(
       {
+        render_info("output$phylotrace_large")
+
         list(
           src = file.path(getwd(), "app/static/images/PhyloTrace_flat_512.png")
         )
@@ -155,9 +159,17 @@ server <- function(id, external_db = shiny::reactive(NULL)) {
     output$database_selection <- renderUI({
       req(Startup$db_location)
 
+      render_info("output$database_selection")
+
+      load_button <- actionButton(
+        ns("load_database"),
+        "Load Database"
+      )
+
       if (is.na(Startup$db_location[2])) {
         # Case no database selected
         table <- "No database selected"
+        load_button <- disabled(load_button)
       } else {
         # Case valid database selected
         table <- DTOutput(ns("selected_database"))
@@ -165,12 +177,15 @@ server <- function(id, external_db = shiny::reactive(NULL)) {
 
       div(
         p(Startup$db_location[1]),
-        table
+        table,
+        load_button
       )
     })
 
     # Render selected database
     output$selected_database <- renderDT({
+      render_info("output$selected_database")
+
       # Get database metadata
       db_path <- Startup$db_location[2]
       req(is.character(db_path) && !is.na(db_path) && file.exists(db_path))

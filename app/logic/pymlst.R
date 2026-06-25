@@ -26,8 +26,6 @@ download_cgmlst_scheme <- function(
   env_name,
   overwrite = FALSE
 ) {
-  message("Initiated scheme download")
-
   download_status <- tryCatch(
     run(
       command = "conda",

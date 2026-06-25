@@ -51,6 +51,7 @@ box::use(
 )
 
 box::use(
+  app / logic / functions[render_info],
   app / logic / schemes[cgmlst_org_schemes],
   app / logic / pymlst[download_cgmlst_scheme],
   app /
@@ -195,7 +196,9 @@ server <- function(id) {
     Scheme_Browser <- reactiveValues(download_status = "", last_download = NULL)
 
     # Render scheme selector
-    output$scheme_selection <- renderUI(
+    output$scheme_selection <- renderUI({
+      render_info("output$scheme_selection")
+
       pickerInput(
         ns("scheme_selector"),
         "Select Scheme",
@@ -209,7 +212,7 @@ server <- function(id) {
           `show-subtext` = TRUE
         )
       )
-    )
+    })
 
     # Fetch scheme metadata from cgmlst.org
     scheme_overview <- reactive({
@@ -220,6 +223,8 @@ server <- function(id) {
 
     # Render scheme metadata
     output$scheme_overview <- renderUI({
+      render_info("output$scheme_overview")
+
       overview <- scheme_overview()
 
       if (is.character(overview)) {
@@ -232,6 +237,8 @@ server <- function(id) {
     # Render scheme info table
     output$scheme_table <- renderDT({
       req(is.data.frame(scheme_overview()))
+
+      render_info("output$scheme_table")
 
       datatable(
         scheme_overview(),
@@ -249,6 +256,8 @@ server <- function(id) {
       {
         req(input$scheme_selector)
 
+        render_info("output$species_img")
+
         list(src = get_species_img(input$scheme_selector))
       },
       deleteFile = FALSE
@@ -263,6 +272,8 @@ server <- function(id) {
 
     # Render title + taxonomy
     output$species_details <- renderUI({
+      render_info("output$species_details")
+
       details <- species_record()
 
       if (is.null(details)) {
@@ -309,6 +320,8 @@ server <- function(id) {
 
     # Render description in its own full-width row below the title/image
     output$species_summary <- renderUI({
+      render_info("output$species_summary")
+
       details <- species_record()
       req(!is.null(details), !is.null(details$summary))
 
@@ -325,6 +338,8 @@ server <- function(id) {
     )
 
     output$db_name_input <- renderUI({
+      render_info("output$db_name_input")
+
       textInput(
         ns("db_name"),
         "Define Database Name",
@@ -334,16 +349,12 @@ server <- function(id) {
     })
 
     output$selected_dir <- renderText({
-      message(paste(Sys.time(), "--- Render output$selected_dir"))
-      # req(input$db_name)
+      render_info("output$selected_dir")
 
       download_path <- parseDirPath(
         roots = c(Home = path_home(), Root = "/"),
         input$download_location
       )
-
-      foo1 <<- download_path
-      foo2 <<- input$db_name
 
       if (
         !length(download_path) ||
