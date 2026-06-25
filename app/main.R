@@ -142,7 +142,7 @@ server <- function(id) {
 
     # Main application module servers
     database$server("database")
-    typing$server("typing")
+    typing$server("typing", db_path = STARTUP_vals$db_path)
     visualization$server("visualization")
     amr_screening$server("amr_screening")
 
@@ -156,46 +156,74 @@ server <- function(id) {
       nav_select(id = "tabs", selected = "startup_panel")
     })
 
+    # The main application panels are built exactly once (see below); this
+    # tracks whether that has happened yet.
+    panels_built <- FALSE
+    app_panel_values <- c(
+      "database_panel",
+      "typing_panel",
+      "visualization_panel",
+      "amr_screening_panel"
+    )
+
     # Event swap startup panels for the main application panels once a
     # database has been loaded
     observeEvent(STARTUP_vals$load_database(), {
-      app_panels <- list(
-        fillable_panel(
-          "Database",
-          value = "database_panel",
-          database$ui(ns("database"))
-        ),
-        fillable_panel(
-          "Typing",
-          value = "typing_panel",
-          typing$ui(ns("typing"))
-        ),
-        fillable_panel(
-          "Visualization",
-          value = "visualization_panel",
-          visualization$ui(ns("visualization"))
-        ),
-        fillable_panel(
-          "AMR Screening",
-          value = "amr_screening_panel",
-          amr_screening$ui(ns("amr_screening"))
+      # Build the main application panels exactly once. On later loads they are
+      # only revealed again (the `else` branch). They host shinyFiles buttons
+      # (e.g. the Typing file/folder choosers) whose modal containers are
+      # appended to <body> and which register a document-level click handler;
+      # removing and re-inserting the panels would duplicate that handler and
+      # open the file dialog twice. Hiding/showing keeps the bindings intact.
+      if (!panels_built) {
+        app_panels <- list(
+          fillable_panel(
+            "Database",
+            value = "database_panel",
+            database$ui(ns("database"))
+          ),
+          fillable_panel(
+            "Typing",
+            value = "typing_panel",
+            typing$ui(ns("typing"))
+          ),
+          fillable_panel(
+            "Visualization",
+            value = "visualization_panel",
+            visualization$ui(ns("visualization"))
+          ),
+          fillable_panel(
+            "AMR Screening",
+            value = "amr_screening_panel",
+            amr_screening$ui(ns("amr_screening"))
+          )
         )
-      )
-      targets <- c(
-        "scheme_browser_panel",
-        "database_panel",
-        "typing_panel",
-        "visualization_panel"
-      )
+        targets <- c(
+          "scheme_browser_panel",
+          "database_panel",
+          "typing_panel",
+          "visualization_panel"
+        )
 
-      for (i in seq_along(app_panels)) {
-        nav_insert(
-          id = "tabs",
-          nav = app_panels[[i]],
-          target = targets[i],
-          position = "after",
-          select = i == 1L
-        )
+        for (i in seq_along(app_panels)) {
+          nav_insert(
+            id = "tabs",
+            nav = app_panels[[i]],
+            target = targets[i],
+            position = "after",
+            select = i == 1L
+          )
+        }
+
+        panels_built <<- TRUE
+      } else {
+        for (panel in app_panel_values) {
+          nav_show(
+            id = "tabs",
+            target = panel,
+            select = panel == "database_panel"
+          )
+        }
       }
 
       # Right-aligned session controls: the loaded database name (file name
@@ -256,17 +284,18 @@ server <- function(id) {
       nav_show(id = "tabs", target = "startup_panel", select = TRUE)
       nav_show(id = "tabs", target = "scheme_browser_panel")
 
-      # Remove the main application panels
-      for (panel in c(
-        "database_panel",
-        "typing_panel",
-        "visualization_panel",
-        "amr_screening_panel"
-      )) {
-        nav_remove(id = "tabs", target = panel)
+      # Hide (do not remove) the main application panels, for the same reason the
+      # startup panels are hidden rather than removed: the Typing panel hosts
+      # shinyFiles buttons, and a remove/re-insert cycle would duplicate the
+      # shinyFiles document click handler and open the file dialog twice. They
+      # are revealed again on the next load.
+      for (panel in app_panel_values) {
+        nav_hide(id = "tabs", target = panel)
       }
 
-      # Remove the session controls as nav_remove() cannot target it
+      # Remove the session controls as nav_remove() cannot target it. It carries
+      # no shinyFiles dependency, so it is safe to re-create on the next load
+      # (which also refreshes the displayed database name).
       runjs(
         "var el = document.getElementById('session-controls');
          if (el && el.closest('li')) el.closest('li').remove();"

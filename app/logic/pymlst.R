@@ -6,10 +6,11 @@ box::use(
     dbConnect,
     dbListTables,
     dbReadTable,
+    dbGetQuery,
     dbWriteTable,
     dbDisconnect,
   ],
-  processx[run],
+  processx[run, process],
   openssl[sha256],
   tidyr[pivot_wider],
   dplyr[select, left_join],
@@ -101,19 +102,13 @@ synchronize_database <- function(database, db_path) {
   dbDisconnect(con)
 }
 
-### Typing isolates
-#' @export
-type_genomes <- function(
-  database,
-  db_path,
-  genome_input,
-  script_path = "app/logic/loop-pymlst.sh",
-  identity = 0.95,
-  coverage = 0.9,
-  env = "pymlst_env"
-) {
-  # Set command arguments up
-  cmd_args <- c(
+### Assemble the loop-pymlst.sh command-line flags
+# Shared by the blocking `type_genomes()` and the non-blocking `start_typing()`
+# so the database / genome / parameter contract lives in a single place.
+# `genome_input` is either a directory (passed as -g, every assembly inside is
+# typed) or a single assembly file (passed as -f).
+typing_args <- function(db_path, genome_input, identity, coverage, env) {
+  c(
     "-d",
     basename(db_path),
     if (dir.exists(genome_input)) {
@@ -128,11 +123,27 @@ type_genomes <- function(
     "-e",
     env
   )
+}
 
-  # Run the process
+### Typing isolates
+#' @export
+type_genomes <- function(
+  database,
+  db_path,
+  genome_input,
+  script_path = "app/logic/loop-pymlst.sh",
+  identity = 0.95,
+  coverage = 0.9,
+  env = "pymlst"
+) {
+  # Run the process. `bash <script>` avoids depending on the script's execute
+  # bit and guarantees the brace-glob in the directory branch is expanded.
   typing_status <- run(
-    command = normalizePath(script_path, mustWork = TRUE),
-    args = cmd_args,
+    command = "bash",
+    args = c(
+      normalizePath(script_path, mustWork = TRUE),
+      typing_args(db_path, genome_input, identity, coverage, env)
+    ),
     wd = dirname(db_path),
     echo_cmd = TRUE,
     echo = TRUE,
@@ -187,6 +198,144 @@ type_genomes <- function(
   database <- read_database(db_path)
 
   return(database)
+}
+
+### Start typing in the background (non-blocking)
+# Launches loop-pymlst.sh as a detached processx process that streams its
+# combined stdout/stderr into `log_file`. Returns the live `process` object so
+# the caller (the Typing module) can poll `is_alive()`, tail the log for live
+# progress, and `kill()` it on demand. Unlike `type_genomes()` this does not
+# block the R session and does not touch the database itself - read the result
+# with `read_database()` once the process has finished.
+#' @export
+start_typing <- function(
+  db_path,
+  genome_input,
+  log_file,
+  script_path = "app/logic/loop-pymlst.sh",
+  identity = 0.95,
+  coverage = 0.9,
+  env = "pymlst"
+) {
+  process$new(
+    command = "bash",
+    args = c(
+      normalizePath(script_path, mustWork = TRUE),
+      typing_args(db_path, genome_input, identity, coverage, env)
+    ),
+    wd = dirname(db_path),
+    stdout = log_file,
+    stderr = "2>&1"
+  )
+}
+
+### Parse a (possibly partial) typing log into a per-strain status table
+# `log_lines` is the captured loop-pymlst.sh output (character vector or single
+# string); `strains` is the ordered vector of expected strain names (assembly
+# file names without extension). Returns a data frame with one row per expected
+# strain so it can drive a live progress table:
+#   status      - Pending | Running | Added | Duplicate | Incompatible | Error
+#   genes_found - genes reported by BLAT (NA until known)
+#   detail      - short human-readable explanation
+#' @export
+parse_typing_log <- function(log_lines, strains) {
+  log_text <- paste(log_lines, collapse = "\n")
+  finished_all <- grepl("Done!", log_text, fixed = TRUE)
+
+  # Each strain section is introduced by the script's "Processing Strain:" line.
+  parts <- strsplit(log_text, "Processing Strain: ", fixed = TRUE)[[1]]
+  sections <- list()
+  order_seen <- character(0)
+  for (part in parts[-1]) {
+    name <- trimws(sub("\n.*$", "", part))
+    sections[[name]] <- part
+    order_seen <- c(order_seen, name)
+  }
+
+  classify <- function(chunk, complete) {
+    gene_match <- regmatches(chunk, regexec("found ([0-9]+) genes", chunk))[[1]]
+    genes <- if (length(gene_match) > 1) as.integer(gene_match[2]) else NA_integer_
+
+    if (!complete) {
+      return(list(status = "Running", genes = genes, detail = "Typing in progress ..."))
+    }
+    if (grepl("already present in the base", chunk)) {
+      return(list(
+        status = "Duplicate",
+        genes = genes,
+        detail = "Strain already present in the database."
+      ))
+    }
+    if (grepl("No path was found for the core genome", chunk)) {
+      return(list(
+        status = "Incompatible",
+        genes = genes,
+        detail = "No core-genome path - verify scheme/species."
+      ))
+    }
+    if (grepl("Error:", chunk)) {
+      return(list(status = "Error", genes = genes, detail = "Typing failed - see log."))
+    }
+    if (grepl("Added .* new MLST genes", chunk) || grepl("DONE", chunk)) {
+      return(list(
+        status = "Added",
+        genes = genes,
+        detail = sprintf("%s genes added.", if (is.na(genes)) "?" else genes)
+      ))
+    }
+    list(status = "Error", genes = genes, detail = "Unrecognised outcome - see log.")
+  }
+
+  rows <- lapply(strains, function(strain) {
+    if (!strain %in% names(sections)) {
+      return(data.frame(
+        strain = strain,
+        status = "Pending",
+        genes_found = NA_integer_,
+        detail = "Waiting in queue ...",
+        stringsAsFactors = FALSE
+      ))
+    }
+    # A section is complete once another section follows it or the run is over.
+    idx <- match(strain, order_seen)
+    complete <- idx < length(order_seen) || finished_all
+    info <- classify(sections[[strain]], complete)
+    data.frame(
+      strain = strain,
+      status = info$status,
+      genes_found = info$genes,
+      detail = info$detail,
+      stringsAsFactors = FALSE
+    )
+  })
+
+  do.call(rbind, rows)
+}
+
+### Distinct strain names already stored in a database
+# Used to flag selected assemblies that are already present (their wgMLST `add`
+# would be rejected as a duplicate). The synthetic "ref" core-genome entry is
+# excluded.
+#' @export
+existing_strains <- function(db_path) {
+  if (
+    is.null(db_path) ||
+      length(db_path) != 1 ||
+      is.na(db_path) ||
+      !file.exists(db_path)
+  ) {
+    return(character(0))
+  }
+
+  con <- dbConnect(SQLite(), db_path)
+  on.exit(dbDisconnect(con))
+
+  if (!"mlst" %in% dbListTables(con)) {
+    return(character(0))
+  }
+
+  souches <- dbGetQuery(con, "SELECT DISTINCT souche FROM mlst")$souche
+  setdiff(souches, "ref")
 }
 
 add_sequence_hashes <- function(database) {
