@@ -41,6 +41,7 @@ box::use(
   app / view / scheme_browser,
   app / view / database,
   app / view / typing,
+  app / view / analysis_dashboard,
   app / view / visualization,
   app / view / amr_screening,
 )
@@ -150,7 +151,7 @@ server <- function(id) {
     })
 
     # Module servers and return values
-    SCHEME_BROWSER_vals <- scheme_browser$server("scheme_browser") # scheme_browser module
+    SCHEME_BROWSER_vals <- scheme_browser$server("scheme_browser")
 
     # Database location assembled in the scheme browser, captured on each
     # "Load Database" click and handed to the startup module.
@@ -164,6 +165,7 @@ server <- function(id) {
     # Main application module servers
     database$server("database")
     typing$server("typing", db_path = STARTUP_vals$db_path)
+    analysis_dashboard$server("analysis_dashboard")
     visualization$server("visualization")
     amr_screening$server("amr_screening")
 
@@ -180,13 +182,18 @@ server <- function(id) {
     # Event swap startup panels for the main application panels once a
     # database has been loaded
     observeEvent(STARTUP_vals$load_database(), {
-      # Each module UI is run through strip_shinyfiles_assets() so the inserted
-      # panels do not re-ship (and re-run) shinyFiles.js - see the helper above.
       app_panels <- list(
         fillable_panel(
-          "Database",
+          "Database Browser",
           value = "database_panel",
           strip_shinyfiles_assets(database$ui(ns("database")))
+        ),
+        fillable_panel(
+          "Analysis Dashboard",
+          value = "analysis_dashboard_panel",
+          strip_shinyfiles_assets(analysis_dashboard$ui(ns(
+            "analysis_dashboard"
+          )))
         ),
         fillable_panel(
           "Visualization",
@@ -208,6 +215,7 @@ server <- function(id) {
       targets <- c(
         "scheme_browser_panel",
         "database_panel",
+        "analysis_dashboard_panel",
         "visualization_panel",
         "typing_panel"
       )
@@ -222,11 +230,7 @@ server <- function(id) {
         )
       }
 
-      # Right-aligned session controls: the loaded database name (file name
-      # only, full path on hover) and a button to roll back to the startup
-      # interface. `margin-left: auto` on the item, together with the navbar's
-      # trailing spacer, opens a gap between the panels and this block. A single
-      # insert keeps placement deterministic and removal trivial on rollback.
+      # Navbar session controls: loaded database name
       db_path <- STARTUP_vals$db_path()
       nav_insert(
         id = "tabs",
@@ -258,10 +262,7 @@ server <- function(id) {
         position = "after"
       )
 
-      # Hide (do not remove) the startup-phase panels. These contain shinyFiles
-      # buttons whose modal containers are appended to <body>; removing and
-      # later re-inserting the panels would orphan the old modal and create a
-      # duplicate with the same id, causing a second file dialog to appear.
+      # Hide ( not remove) the startup-phase panels
       nav_hide(id = "tabs", target = "startup_panel")
       nav_hide(id = "tabs", target = "scheme_browser_panel")
     })
@@ -274,16 +275,14 @@ server <- function(id) {
 
     # Event roll back to the initial startup interface
     observeEvent(input$reset, {
-      # Reveal the startup-phase panels that were hidden on load. They were never
-      # removed, so their shinyFiles buttons keep their original bindings (no
-      # duplicate file dialog) and their fillable wrapping is intact.
+      # Reveal the startup-phase panels that were hidden on load
       nav_show(id = "tabs", target = "startup_panel", select = TRUE)
       nav_show(id = "tabs", target = "scheme_browser_panel")
 
-      # Remove the main application panels. They are re-inserted (and their
-      # shinyFiles assets re-stripped) on the next load.
+      # Remove the main application panels
       for (panel in c(
         "database_panel",
+        "analysis_dashboard_panel",
         "visualization_panel",
         "typing_panel",
         "amr_screening_panel"

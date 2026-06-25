@@ -51,7 +51,7 @@ ui <- function(id) {
     useShinyjs(),
     fillable = TRUE,
     sidebar = sidebar(
-      title = "Database",
+      title = "Database Browser",
       width = 350,
       sidebar_menu(ns, db_menu)
     ),

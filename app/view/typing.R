@@ -19,6 +19,7 @@ box::use(
     div,
     p,
     span,
+    tags,
     icon,
     actionButton,
     numericInput,
@@ -32,6 +33,7 @@ box::use(
     layout_columns,
     accordion,
     accordion_panel,
+    tooltip,
   ],
   shinyFiles[
     shinyFilesButton,
@@ -48,7 +50,15 @@ box::use(
 )
 box::use(
   app / logic / functions[render_info],
-  app / logic / pymlst[start_typing, parse_typing_log, existing_strains],
+  app /
+    logic /
+    pymlst[
+      start_typing,
+      parse_typing_log,
+      existing_strains,
+      scheme_size,
+      strain_gene_counts
+    ],
 )
 
 # Accepted assembly extensions, mirroring the glob in loop-pymlst.sh.
@@ -72,6 +82,34 @@ status_badge <- function(status) {
   sprintf('<span class="badge %s">%s</span>', cls, status)
 }
 
+# Scheme-completeness (QC) badge: share of the scheme's loci called for a
+# strain. Green when near-complete, amber for a mild shortfall, red when a large
+# fraction is missing (a sign of a poor assembly or species mismatch).
+completeness_badge <- function(pct) {
+  if (is.na(pct)) {
+    return("—")
+  }
+  cls <- if (pct >= 99) {
+    "text-bg-success"
+  } else if (pct >= 90) {
+    "text-bg-warning"
+  } else {
+    "text-bg-danger"
+  }
+  sprintf('<span class="badge %s">%.1f%%</span>', cls, pct)
+}
+
+# Human-readable per-strain analysis duration: seconds -> "3.9s" or "1m 04s".
+format_elapsed <- function(secs) {
+  if (is.na(secs)) {
+    return("—")
+  }
+  if (secs < 60) {
+    return(sprintf("%.1fs", secs))
+  }
+  sprintf("%dm %02ds", secs %/% 60, round(secs %% 60))
+}
+
 #' @export
 ui <- function(id) {
   ns <- NS(id)
@@ -80,13 +118,19 @@ ui <- function(id) {
     useShinyjs(),
     fillable = TRUE,
     sidebar = sidebar(
-      title = "Allelic Typing",
-      width = 320,
-      p(
-        class = "text-muted",
-        "Select a single assembled genome (.fasta, .fa, .fna) or a folder of ",
-        "assemblies to type against the loaded scheme."
+      title = div(
+        class = "typing-sidebar-title",
+        div(class = "sidebar-title", "Allelic Typing"),
+        tooltip(
+          icon("circle-info", class = "text-muted"),
+          paste(
+            "Select a single assembled genome (.fasta, .fa, .fna) or a folder",
+            "of assemblies to type against the loaded scheme."
+          )
+        )
       ),
+      width = 320,
+      uiOutput(ns("scheme_info")),
       shinyFilesButton(
         ns("genome_file"),
         "Select File",
@@ -111,7 +155,15 @@ ui <- function(id) {
           icon = icon("sliders"),
           numericInput(
             ns("identity"),
-            "Min. identity",
+            tooltip(
+              span("Min. identity ", icon("circle-info", class = "text-muted")),
+              paste(
+                "Minimum sequence identity for BLAT to call a locus: the",
+                "fraction of identical bases between the assembly and the",
+                "reference allele (passed to BLAT as -minIdentity). Raise it for",
+                "stricter matches; lower it to recover more divergent alleles."
+              )
+            ),
             value = 0.95,
             min = 0,
             max = 1,
@@ -119,7 +171,14 @@ ui <- function(id) {
           ),
           numericInput(
             ns("coverage"),
-            "Min. coverage",
+            tooltip(
+              span("Min. coverage ", icon("circle-info", class = "text-muted")),
+              paste(
+                "Minimum fraction of a reference locus the alignment must span",
+                "to keep a hit (aligned length / locus length). Hits below this",
+                "are discarded; partial hits above it are aligned and gap-filled."
+              )
+            ),
             value = 0.9,
             min = 0,
             max = 1,
@@ -277,6 +336,31 @@ server <- function(id, db_path = shiny::reactive(NULL)) {
       existing_strains(db_path())
     })
 
+    # Total loci in the loaded scheme (denominator of the completeness metric).
+    scheme_total <- reactive(scheme_size(db_path()))
+
+    # Loci called per selected strain. Depends on Typing$refresh, which is only
+    # bumped once the background process has exited, so the database is never
+    # queried while the typing process still holds a write lock on it.
+    gene_counts <- reactive({
+      Typing$refresh
+      strain_gene_counts(db_path(), Typing$strains)
+    })
+
+    # Loaded-scheme summary shown to the user (total number of loci).
+    output$scheme_info <- renderUI({
+      total <- scheme_total()
+      if (is.na(total) || total == 0) {
+        return(NULL)
+      }
+      div(
+        class = "text-muted small",
+        "Scheme size: ",
+        tags$strong(format(total, big.mark = ",")),
+        " loci"
+      )
+    })
+
     # Enable typing only with a valid database, at least one assembly, and no
     # run in flight. Terminate mirrors the running state.
     observe({
@@ -375,14 +459,29 @@ server <- function(id, db_path = shiny::reactive(NULL)) {
         ))
       }
 
+      total <- scheme_total()
+      present <- gene_counts()[results$strain]
+      completeness <- if (!is.na(total) && total > 0) {
+        round(present / total * 100, 1)
+      } else {
+        rep(NA_real_, nrow(results))
+      }
+      # Completeness only makes sense for strains that are in the database.
+      completeness[!results$status %in% c("Added", "Duplicate")] <- NA_real_
+
+      dash <- function(x) ifelse(is.na(x), "—", as.character(x))
+
       table <- data.frame(
         Strain = results$strain,
         Status = vapply(results$status, status_badge, character(1)),
-        `Genes found` = ifelse(
-          is.na(results$genes_found),
-          "-",
-          as.character(results$genes_found)
-        ),
+        `Loci found` = dash(results$found),
+        `Alleles added` = dash(results$added),
+        Partial = dash(results$partial),
+        Filled = dash(results$filled),
+        Removed = dash(results$removed),
+        Completeness = vapply(completeness, completeness_badge, character(1)),
+        Finished = dash(results$finished),
+        Elapsed = vapply(results$elapsed, format_elapsed, character(1)),
         Detail = results$detail,
         check.names = FALSE,
         stringsAsFactors = FALSE

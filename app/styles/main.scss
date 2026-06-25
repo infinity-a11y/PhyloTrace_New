@@ -14,9 +14,35 @@
     margin-top: 0 !important;
 }
 
+.add-box .btn {
+    height: 100%;
+    margin: 0;
+    padding: 1rem;
+}
+
+.add-box .card-body,
+.add-box .value-box-area,
+.add-box {
+    padding: 0;
+}
+
 .bslib-sidebar-layout .sidebar-title {
-    font-size: 1.5rem;
+    font-size: 1.2em;
     font-family: monospace;
+}
+
+// Allelic Typing sidebar header: title on the left, info tooltip icon pushed to
+// the far right with a guaranteed gap between them.
+.typing-sidebar-title {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+}
+
+.typing-sidebar-title i {
+    font-size: 1rem;
+    cursor: help;
 }
 
 .progress {
@@ -155,8 +181,7 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-weight: 500;
-    font-size: 1.2em;
+    font-weight: 600;
 }
 
 #reset-session {
@@ -460,19 +485,19 @@ label {
 .btn-attention {
     --attention-color: 0, 0, 0;
     border-color: rgba(var(--attention-color), 0.9);
-    animation: btn-attention-pulse 2.4s ease-in-out infinite;
+    animation: btn-attention-pulse 2s ease-in-out infinite;
 }
 
 @keyframes btn-attention-pulse {
 
     0%,
     100% {
-        box-shadow: 0 0 0 0 rgba(var(--attention-color), 0.4);
+        box-shadow: 0 0 0 0 rgba(var(--attention-color), 0.75);
         border-color: rgba(var(--attention-color), 0.9);
     }
 
     50% {
-        box-shadow: 0 0 0 5px rgba(var(--attention-color), 0);
+        box-shadow: 0 0 0 8px rgba(var(--attention-color), 0);
         border-color: rgba(var(--attention-color), 0.5);
     }
 }

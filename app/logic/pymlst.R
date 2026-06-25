@@ -232,11 +232,28 @@ start_typing <- function(
 ### Parse a (possibly partial) typing log into a per-strain status table
 # `log_lines` is the captured loop-pymlst.sh output (character vector or single
 # string); `strains` is the ordered vector of expected strain names (assembly
-# file names without extension). Returns a data frame with one row per expected
-# strain so it can drive a live progress table:
-#   status      - Pending | Running | Added | Duplicate | Incompatible | Error
-#   genes_found - genes reported by BLAT (NA until known)
-#   detail      - short human-readable explanation
+# file names without extension). Returns one row per expected strain so it can
+# drive a live progress / results table. Columns:
+#   status  - Pending | Running | Added | Duplicate | Incompatible | Error
+#   found   - genes located by BLAT
+#   added   - new MLST genes stored (len(genes) - bad)
+#   partial  - partial genes detected
+#   filled   - partial genes recovered
+#   removed  - genes dropped (bad coverage / failed CDS test)
+#   finished - wall-clock time of the "DONE" log line ("HH:MM:SS")
+#   elapsed  - analysis duration in seconds (DONE minus first timestamp)
+#   detail   - short human-readable explanation
+#
+# The outcomes mirror every branch `wgMLST add` (pymlst/wg/core.py::add_strain
+# and pymlst/common/blat.py::run_blat) can take:
+#   Added        - run reached "DONE"
+#   Duplicate    - StrainAlreadyPresent ("already present in the base")
+#   Incompatible - CoreGenomePathNotFound ("No path was found for the core
+#                  genome"): BLAT matched no core gene, i.e. wrong species /
+#                  unusable assembly
+#   Error        - BinaryNotFound, BLAT failure, bad identity/coverage range,
+#                  ChromosomeNotFound, invalid strain name, or any other
+#                  ClickException printed as "Error: ..."
 #' @export
 parse_typing_log <- function(log_lines, strains) {
   log_text <- paste(log_lines, collapse = "\n")
@@ -252,58 +269,119 @@ parse_typing_log <- function(log_lines, strains) {
     order_seen <- c(order_seen, name)
   }
 
+  num <- function(chunk, pattern) {
+    match <- regmatches(chunk, regexec(pattern, chunk))[[1]]
+    if (length(match) > 1) as.integer(match[2]) else NA_integer_
+  }
+
+  # Per-strain wall-clock timing taken from the "[INFO: <ts>]" log prefixes
+  # (e.g. "[INFO: 2026-06-25 21:16:40,224] DONE"). `finished` is the time on the
+  # DONE line; `elapsed` is DONE minus the strain's first timestamp (the BLAT
+  # search). Both are NA when the strain never reached DONE.
+  ts_pattern <-
+    "\\[INFO: ([0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}[.,][0-9]+)\\]"
+  timing <- function(chunk) {
+    to_posix <- function(x) {
+      as.POSIXct(gsub(",", ".", x), format = "%Y-%m-%d %H:%M:%OS")
+    }
+    matches <- regmatches(chunk, gregexpr(ts_pattern, chunk))[[1]]
+    stamps <- if (length(matches)) {
+      to_posix(sub(ts_pattern, "\\1", matches))
+    } else {
+      as.POSIXct(character(0))
+    }
+    done <- regmatches(
+      chunk,
+      regexec(paste0(ts_pattern, "[ \t]*DONE"), chunk)
+    )[[1]]
+    done_ts <- if (length(done) > 1) to_posix(done[2]) else as.POSIXct(NA)
+    start_ts <- if (length(stamps)) min(stamps, na.rm = TRUE) else as.POSIXct(NA)
+    list(
+      finished = if (!is.na(done_ts)) format(done_ts, "%H:%M:%S") else NA_character_,
+      elapsed = if (!is.na(done_ts) && !is.na(start_ts)) {
+        as.numeric(difftime(done_ts, start_ts, units = "secs"))
+      } else {
+        NA_real_
+      }
+    )
+  }
+
   classify <- function(chunk, complete) {
-    gene_match <- regmatches(chunk, regexec("found ([0-9]+) genes", chunk))[[1]]
-    genes <- if (length(gene_match) > 1) as.integer(gene_match[2]) else NA_integer_
+    times <- timing(chunk)
+    metrics <- list(
+      found = num(chunk, "found ([0-9]+) genes"),
+      added = num(chunk, "Added ([0-9]+) new MLST genes"),
+      partial = num(chunk, "Found ([0-9]+) partial genes"),
+      filled = num(chunk, "partial genes, filled ([0-9]+)"),
+      removed = num(chunk, "Removed ([0-9]+) genes"),
+      finished = times$finished,
+      elapsed = times$elapsed
+    )
+    outcome <- function(status, detail) c(metrics, list(status = status, detail = detail))
 
     if (!complete) {
-      return(list(status = "Running", genes = genes, detail = "Typing in progress ..."))
+      return(outcome("Running", "Typing in progress ..."))
     }
     if (grepl("already present in the base", chunk)) {
-      return(list(
-        status = "Duplicate",
-        genes = genes,
-        detail = "Strain already present in the database."
-      ))
+      return(outcome("Duplicate", "Strain already present in the database."))
     }
     if (grepl("No path was found for the core genome", chunk)) {
-      return(list(
-        status = "Incompatible",
-        genes = genes,
-        detail = "No core-genome path - verify scheme/species."
+      return(outcome(
+        "Incompatible",
+        "No core genes matched - assembly likely does not match the scheme species."
       ))
     }
-    if (grepl("Error:", chunk)) {
-      return(list(status = "Error", genes = genes, detail = "Typing failed - see log."))
+    if (grepl("BLAT binary was not found", chunk)) {
+      return(outcome("Error", "BLAT binary not found in the pymlst environment."))
     }
-    if (grepl("Added .* new MLST genes", chunk) || grepl("DONE", chunk)) {
-      return(list(
-        status = "Added",
-        genes = genes,
-        detail = sprintf("%s genes added.", if (is.na(genes)) "?" else genes)
-      ))
+    if (grepl("An error occurred while running BLAT", chunk)) {
+      return(outcome("Error", "BLAT failed to run on this assembly."))
     }
-    list(status = "Error", genes = genes, detail = "Unrecognised outcome - see log.")
+    if (grepl("must be in range", chunk)) {
+      return(outcome("Error", "Identity / coverage must be within [0-1]."))
+    }
+    if (grepl("Chromosome .* not found", chunk)) {
+      return(outcome("Error", "A matched contig was missing from the assembly."))
+    }
+    if (grepl("contains", chunk) && grepl("symbol", chunk)) {
+      return(outcome("Error", "Invalid strain name (unsupported character)."))
+    }
+    if (grepl("DONE", chunk) || !is.na(metrics$added)) {
+      # The gene counts are surfaced as their own columns; nothing extra to say.
+      return(outcome("Added", ""))
+    }
+    # Complete but unrecognised: surface any explicit "Error: ..." line.
+    err <- regmatches(chunk, regexec("Error:[ \t]*(.+)", chunk))[[1]]
+    outcome(
+      "Error",
+      if (length(err) > 1) trimws(err[2]) else "Unrecognised outcome - see log."
+    )
   }
 
   rows <- lapply(strains, function(strain) {
     if (!strain %in% names(sections)) {
-      return(data.frame(
-        strain = strain,
-        status = "Pending",
-        genes_found = NA_integer_,
-        detail = "Waiting in queue ...",
-        stringsAsFactors = FALSE
-      ))
+      info <- list(
+        status = "Pending", found = NA_integer_, added = NA_integer_,
+        partial = NA_integer_, filled = NA_integer_, removed = NA_integer_,
+        finished = NA_character_, elapsed = NA_real_,
+        detail = "Waiting in queue ..."
+      )
+    } else {
+      # A section is complete once another section follows it or the run is over.
+      idx <- match(strain, order_seen)
+      complete <- idx < length(order_seen) || finished_all
+      info <- classify(sections[[strain]], complete)
     }
-    # A section is complete once another section follows it or the run is over.
-    idx <- match(strain, order_seen)
-    complete <- idx < length(order_seen) || finished_all
-    info <- classify(sections[[strain]], complete)
     data.frame(
       strain = strain,
       status = info$status,
-      genes_found = info$genes,
+      found = info$found,
+      added = info$added,
+      partial = info$partial,
+      filled = info$filled,
+      removed = info$removed,
+      finished = info$finished,
+      elapsed = info$elapsed,
       detail = info$detail,
       stringsAsFactors = FALSE
     )
@@ -336,6 +414,76 @@ existing_strains <- function(db_path) {
 
   souches <- dbGetQuery(con, "SELECT DISTINCT souche FROM mlst")$souche
   setdiff(souches, "ref")
+}
+
+### Total number of loci in the scheme
+# The reference core genome is stored in `mlst` under the synthetic strain
+# "ref", one row per locus, so the count of "ref" rows is the scheme size. Used
+# as the denominator of the completeness (QC) metric and shown to the user.
+#' @export
+scheme_size <- function(db_path) {
+  if (
+    is.null(db_path) ||
+      length(db_path) != 1 ||
+      is.na(db_path) ||
+      !file.exists(db_path)
+  ) {
+    return(NA_integer_)
+  }
+
+  con <- dbConnect(SQLite(), db_path)
+  on.exit(dbDisconnect(con))
+
+  if (!"mlst" %in% dbListTables(con)) {
+    return(NA_integer_)
+  }
+
+  as.integer(
+    dbGetQuery(con, "SELECT COUNT(*) AS n FROM mlst WHERE souche = 'ref'")$n
+  )
+}
+
+### Number of loci called for each strain
+# One `mlst` row is stored per locus successfully called for a strain, so the
+# row count per `souche` is the number of genes present. Divided by
+# `scheme_size()` this gives the completeness (QC) metric. Returns an integer
+# vector named by (and aligned to) `strains`; strains absent from the database
+# are NA.
+#' @export
+strain_gene_counts <- function(db_path, strains) {
+  counts <- rep(NA_integer_, length(strains))
+  names(counts) <- strains
+
+  if (
+    !length(strains) ||
+      is.null(db_path) ||
+      length(db_path) != 1 ||
+      is.na(db_path) ||
+      !file.exists(db_path)
+  ) {
+    return(counts)
+  }
+
+  con <- dbConnect(SQLite(), db_path)
+  on.exit(dbDisconnect(con))
+
+  if (!"mlst" %in% dbListTables(con)) {
+    return(counts)
+  }
+
+  placeholders <- paste(rep("?", length(strains)), collapse = ",")
+  result <- dbGetQuery(
+    con,
+    paste0(
+      "SELECT souche, COUNT(*) AS n FROM mlst WHERE souche IN (",
+      placeholders,
+      ") GROUP BY souche"
+    ),
+    params = as.list(strains)
+  )
+
+  counts[result$souche] <- as.integer(result$n)
+  counts
 }
 
 add_sequence_hashes <- function(database) {

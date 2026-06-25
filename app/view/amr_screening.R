@@ -12,7 +12,7 @@ ui <- function(id) {
   page_sidebar(
     fillable = TRUE,
     sidebar = sidebar(
-      title = "AMR Screening"
+      title = "Resistance Screening"
     )
   )
 }
