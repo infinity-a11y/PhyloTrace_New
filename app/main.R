@@ -4,8 +4,6 @@ box::use(
     moduleServer,
     NS,
     observeEvent,
-    renderUI,
-    uiOutput,
     tags,
     div,
     actionButton,
@@ -28,6 +26,11 @@ box::use(
     nav_spacer,
     nav_item,
     nav_select,
+    nav_insert,
+    nav_remove,
+    nav_hide,
+    nav_show,
+    as_fill_carrier,
   ],
   shinyjs[runjs],
 )
@@ -35,7 +38,18 @@ box::use(
   app / logic / functions[render_info],
   app / view / startup,
   app / view / scheme_browser,
+  app / view / database,
+  app / view / typing,
+  app / view / visualization,
+  app / view / amr_screening,
 )
+
+# nav_insert() does not apply the fillable wrapping that page_navbar() gives
+# statically-defined panels, so a panel added at runtime would not fill the
+# page. Marking it as a fill carrier reproduces the static behaviour.
+fillable_panel <- function(...) {
+  as_fill_carrier(nav_panel(...))
+}
 
 #' @export
 ui <- function(id) {
@@ -71,7 +85,7 @@ ui <- function(id) {
         onclick = "Shiny.setInputValue('app-quit', Math.random());",
         icon("power-off")
       )
-    ),
+    )
   )
 }
 
@@ -126,6 +140,12 @@ server <- function(id) {
 
     STARTUP_vals <- startup$server("startup", external_db = scheme_browser_db) # startup module
 
+    # Main application module servers
+    database$server("database")
+    typing$server("typing")
+    visualization$server("visualization")
+    amr_screening$server("amr_screening")
+
     # Event show scheme browser UI
     observeEvent(STARTUP_vals$create_scheme(), {
       nav_select(id = "tabs", selected = "scheme_browser_panel")
@@ -134,6 +154,126 @@ server <- function(id) {
     # Event return to startup with the freshly downloaded database loaded
     observeEvent(SCHEME_BROWSER_vals$load_db(), {
       nav_select(id = "tabs", selected = "startup_panel")
+    })
+
+    # Event swap startup panels for the main application panels once a
+    # database has been loaded
+    observeEvent(STARTUP_vals$load_database(), {
+      app_panels <- list(
+        fillable_panel(
+          "Database",
+          value = "database_panel",
+          database$ui(ns("database"))
+        ),
+        fillable_panel(
+          "Typing",
+          value = "typing_panel",
+          typing$ui(ns("typing"))
+        ),
+        fillable_panel(
+          "Visualization",
+          value = "visualization_panel",
+          visualization$ui(ns("visualization"))
+        ),
+        fillable_panel(
+          "AMR Screening",
+          value = "amr_screening_panel",
+          amr_screening$ui(ns("amr_screening"))
+        )
+      )
+      targets <- c(
+        "scheme_browser_panel",
+        "database_panel",
+        "typing_panel",
+        "visualization_panel"
+      )
+
+      for (i in seq_along(app_panels)) {
+        nav_insert(
+          id = "tabs",
+          nav = app_panels[[i]],
+          target = targets[i],
+          position = "after",
+          select = i == 1L
+        )
+      }
+
+      # Right-aligned session controls: the loaded database name (file name
+      # only, full path on hover) and a button to roll back to the startup
+      # interface. `margin-left: auto` on the item, together with the navbar's
+      # trailing spacer, opens a gap between the panels and this block. A single
+      # insert keeps placement deterministic and removal trivial on rollback.
+      db_path <- STARTUP_vals$db_path()
+      nav_insert(
+        id = "tabs",
+        nav = nav_item(
+          style = "margin-left: auto;",
+          div(
+            id = "session-controls",
+            if (length(db_path) && !is.na(db_path)) {
+              div(
+                id = "loaded-db-path",
+                title = db_path,
+                basename(db_path)
+              )
+            },
+            tags$a(
+              id = "reset-session",
+              style = "cursor: pointer;",
+              title = "Return to the start screen",
+              onclick = paste0(
+                "Shiny.setInputValue('",
+                ns("reset"),
+                "', Math.random());"
+              ),
+              icon("arrow-rotate-left")
+            )
+          )
+        ),
+        target = "amr_screening_panel",
+        position = "after"
+      )
+
+      # Hide (do not remove) the startup-phase panels. These contain shinyFiles
+      # buttons whose modal containers are appended to <body>; removing and
+      # later re-inserting the panels would orphan the old modal and create a
+      # duplicate with the same id, causing a second file dialog to appear.
+      nav_hide(id = "tabs", target = "startup_panel")
+      nav_hide(id = "tabs", target = "scheme_browser_panel")
+    })
+
+    # Central teardown of everything the main application set up, returning the
+    # app to its initial state. The navbar swap is handled by the reset event
+    # below; this is the hook for backend state. As the modules grow, reset
+    # their reactive values / dynamic UI here
+    reset_session <- function() {}
+
+    # Event roll back to the initial startup interface
+    observeEvent(input$reset, {
+      # Reveal the startup-phase panels that were hidden on load. They were never
+      # removed, so their shinyFiles buttons keep their original bindings (no
+      # duplicate file dialog) and their fillable wrapping is intact.
+      nav_show(id = "tabs", target = "startup_panel", select = TRUE)
+      nav_show(id = "tabs", target = "scheme_browser_panel")
+
+      # Remove the main application panels
+      for (panel in c(
+        "database_panel",
+        "typing_panel",
+        "visualization_panel",
+        "amr_screening_panel"
+      )) {
+        nav_remove(id = "tabs", target = panel)
+      }
+
+      # Remove the session controls as nav_remove() cannot target it
+      runjs(
+        "var el = document.getElementById('session-controls');
+         if (el && el.closest('li')) el.closest('li').remove();"
+      )
+
+      # Reset backend state
+      reset_session()
     })
   })
 }

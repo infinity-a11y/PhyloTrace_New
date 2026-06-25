@@ -224,7 +224,9 @@ server <- function(id, external_db = shiny::reactive(NULL)) {
 
     # Return values
     reactiveValues(
-      create_scheme = shiny::reactive(input$create_new_db)
+      create_scheme = shiny::reactive(input$create_new_db),
+      load_database = shiny::reactive(input$load_database),
+      db_path = shiny::reactive(Startup$db_location[2])
     )
   })
 }

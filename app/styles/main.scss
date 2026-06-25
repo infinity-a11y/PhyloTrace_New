@@ -3,6 +3,26 @@
     --bs-btn-disabled-opacity: 0.3;
 }
 
+// Database sidebar menu buttons: left-align icon + label
+.db-menu-item {
+    text-align: left;
+    padding-left: 1rem;
+    border-radius: 2rem;
+}
+
+// Selected menu button keeps the hover colour to indicate the active panel.
+.db-menu-item.active {
+    color: var(--bs-btn-hover-color);
+    background-color: var(--bs-btn-hover-bg);
+    border-color: var(--bs-btn-hover-border-color);
+}
+
+.sidebar-menu {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
 #app-startup-load_database {
     width: 100%;
     font-size: 1.2em;
@@ -103,6 +123,45 @@
 #close i {
     display: block;
     justify-self: center;
+}
+
+// Navbar session controls (loaded database + reset)
+#session-controls {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    height: 100%;
+}
+
+#loaded-db-path {
+    font-family: monospace;
+    max-width: 30rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 500;
+    font-size: 1.2em;
+}
+
+#reset-session {
+    width: 32px;
+    height: 32px;
+    align-content: center;
+    justify-items: center;
+    background: #ededed;
+    border-radius: 8px;
+    border: 1px solid #aaaaaa;
+}
+
+#reset-session:hover {
+    border-color: #000000
+}
+
+#reset-session i {
+    display: block;
+    justify-self: center;
+    top: 1px;
+    position: relative;
 }
 
 #app-scheme_browser-scheme_title {
@@ -374,6 +433,36 @@ label {
     display: block;
 }
 
+.db-menu-item .action-icon {
+    margin-right: 1rem;
+}
+
 .navbar>.container-fluid {
     gap: 3rem;
+}
+
+.btn-attention {
+    --attention-color: 0, 0, 0;
+    border-color: rgba(var(--attention-color), 0.9);
+    animation: btn-attention-pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes btn-attention-pulse {
+
+    0%,
+    100% {
+        box-shadow: 0 0 0 0 rgba(var(--attention-color), 0.4);
+        border-color: rgba(var(--attention-color), 0.9);
+    }
+
+    50% {
+        box-shadow: 0 0 0 5px rgba(var(--attention-color), 0);
+        border-color: rgba(var(--attention-color), 0.5);
+    }
+}
+
+// Pause the animation when the button is disabled or hovered.
+.btn.btn-attention:disabled,
+.btn.btn-attention:hover {
+    animation-play-state: paused;
 }

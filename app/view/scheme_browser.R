@@ -27,7 +27,7 @@ box::use(
     textInput,
     verbatimTextOutput
   ],
-  shinyjs[disabled, useShinyjs, enable, disable],
+  shinyjs[disabled, useShinyjs, enable, disable, addClass, removeClass],
   bslib[
     navset_card_tab,
     page_fillable,
@@ -375,8 +375,6 @@ server <- function(id) {
 
     # Observe download button status
     observe({
-      message(paste(Sys.time(), TRUE))
-
       download_path <- parseDirPath(
         roots = c(Home = path_home(), Root = "/"),
         input$download_location
@@ -389,10 +387,8 @@ server <- function(id) {
           length(download_path) &&
           is.character(download_path)
       ) {
-        message("ENABLE")
         enable("scheme_download")
       } else {
-        message("DISABLE")
         disable("scheme_download")
       }
     }) |>
@@ -465,7 +461,8 @@ server <- function(id) {
         # current (possibly changed) input selection.
         Scheme_Browser$last_download <- db_location
 
-        shinyjs::enable("load_db")
+        enable("load_db")
+        addClass("load_db", "btn-attention")
       }
 
       # Return status
@@ -480,12 +477,11 @@ server <- function(id) {
 
     # Disable load_db button on each scheme change
     observeEvent(input$scheme_selector, {
-      shinyjs::disable("load_db")
+      disable("load_db")
+      removeClass("load_db", "btn-attention")
     })
 
-    # Return values: surface the "Load Database" click and the path of the
-    # last successful download so the parent module can hand it over to the
-    # startup module.
+    # Server return values
     reactiveValues(
       load_db = reactive(input$load_db),
       db_location = reactive(Scheme_Browser$last_download)
