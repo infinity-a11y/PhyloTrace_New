@@ -14,7 +14,9 @@ box::use(
     modalDialog,
     modalButton,
     icon,
-    tagList
+    tagList,
+    reactive,
+    isolate
   ],
   bslib[
     page_sidebar,
@@ -112,12 +114,25 @@ server <- function(id) {
     })
 
     # Module servers and return values
-    STARTUP_vals <- startup$server("startup") # startup module
     SCHEME_BROWSER_vals <- scheme_browser$server("scheme_browser") # scheme_browser module
+
+    # Database location assembled in the scheme browser, captured on each
+    # "Load Database" click and handed to the startup module.
+    scheme_browser_db <- reactive({
+      SCHEME_BROWSER_vals$load_db()
+      isolate(SCHEME_BROWSER_vals$db_location())
+    })
+
+    STARTUP_vals <- startup$server("startup", external_db = scheme_browser_db) # startup module
 
     # Event show scheme browser UI
     observeEvent(STARTUP_vals$create_scheme(), {
       nav_select(id = "tabs", selected = "scheme_browser_panel")
+    })
+
+    # Event return to startup with the freshly downloaded database loaded
+    observeEvent(SCHEME_BROWSER_vals$load_db(), {
+      nav_select(id = "tabs", selected = "startup_panel")
     })
   })
 }

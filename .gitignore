@@ -1,0 +1,27 @@
+# --- Claude Code / AI assistants ---
+.claude/
+.claude.json
+CLAUDE.local.md
+
+# --- R ---
+.Rproj.user/
+.Rhistory
+.Rapp.history
+.RData
+.Ruserdata
+.Renviron
+
+# --- Node / JS tooling ---
+node_modules/
+
+# --- Office / editor lock & swap files ---
+.~lock.*#
+*~
+*.swp
+
+# --- OS cruft ---
+.DS_Store
+Thumbs.db
+
+# --- Logs ---
+*.log

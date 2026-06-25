@@ -20,9 +20,12 @@ box::use(
     reactiveValues,
     observeEvent,
     tagList,
+    renderText,
     h5,
     observe,
-    textInput
+    bindEvent,
+    textInput,
+    verbatimTextOutput
   ],
   shinyjs[disabled, useShinyjs, enable, disable],
   bslib[
@@ -52,7 +55,12 @@ box::use(
   app / logic / pymlst[download_cgmlst_scheme],
   app /
     logic /
-    scheme_browser[get_scheme_overview, get_species_img, get_species_details]
+    scheme_browser[
+      get_scheme_overview,
+      get_species_img,
+      get_species_details,
+      assemble_db_location
+    ]
 )
 
 #' @export
@@ -78,59 +86,90 @@ ui <- function(id) {
           title = NULL,
           nav_panel(
             "Scheme Download",
-            div(
-              id = "scheme-download-selection",
-              uiOutput(ns("scheme_selection")),
-              shinyDirButton(
-                ns("download_location"),
-                "Select Location",
-                icon = icon("folder-open"),
-                title = "Choose a location for a new database",
-                buttonType = "default",
-                root = path_home(),
-                multiple = FALSE
-              ),
-              uiOutput(ns("db_name_input")),
-              uiOutput(ns("selected_dir")),
-              disabled(
-                actionButton(
-                  ns("scheme_download"),
-                  "Download Scheme",
-                  icon = icon("download")
+            layout_columns(
+              as_fill_carrier(
+                div(
+                  div(
+                    id = "scheme-selection",
+                    uiOutput(ns("scheme_selection"))
+                  ),
+                  as_fill_item(
+                    card(
+                      fill = TRUE,
+                      full_screen = TRUE,
+                      card_header(
+                        class = "bg-dark",
+                        "Scheme Metadata"
+                      ),
+                      card_body(as_fill_item(uiOutput(ns("scheme_overview"))))
+                    )
+                  )
                 )
               ),
-              div(
-                id = ns("download_status_ui"),
-                uiOutput(ns("download_status"))
-              )
-            ),
-            layout_columns(
-              card(
-                full_screen = TRUE,
-                card_header(
-                  class = "bg-dark",
-                  "Scheme Metadata"
-                ),
-                card_body(as_fill_item(uiOutput(ns("scheme_overview"))))
-              ),
-              as_fillable_container(
-                as_fill_item(
+              as_fill_carrier(
+                div(
                   card(
-                    full_screen = TRUE,
+                    fill = FALSE,
                     card_header(
                       class = "bg-dark",
-                      "Details"
+                      "Initiate New Database"
                     ),
                     card_body(
-                      fillable = FALSE,
                       div(
-                        class = "species-card_article",
-                        div(
-                          class = "species-card_media",
-                          imageOutput(ns("species_img"), height = "auto")
+                        id = "location-define-ui",
+                        shinyDirButton(
+                          ns("download_location"),
+                          "Select Location",
+                          icon = icon("folder-open"),
+                          title = "Choose a location for a new database",
+                          buttonType = "default",
+                          root = path_home(),
+                          multiple = FALSE
                         ),
-                        uiOutput(ns("species_details")),
-                        uiOutput(ns("species_summary"))
+                        uiOutput(ns("db_name_input")),
+                      ),
+                      div(
+                        id = "location-selected-ui",
+                        div(id = "target-location", "Target location:"),
+                        verbatimTextOutput(ns("selected_dir"))
+                      ),
+                      div(
+                        id = "download-buttons",
+                        disabled(
+                          actionButton(
+                            ns("scheme_download"),
+                            "Download Scheme",
+                            icon = icon("download")
+                          )
+                        ),
+                        disabled(
+                          actionButton(
+                            ns("load_db"),
+                            "Load Database",
+                            icon = icon("angles-right")
+                          )
+                        )
+                      )
+                    )
+                  ),
+                  as_fill_item(
+                    card(
+                      fill = TRUE,
+                      full_screen = TRUE,
+                      card_header(
+                        class = "bg-dark",
+                        "Details"
+                      ),
+                      card_body(
+                        div(
+                          class = "species-card_article",
+                          div(
+                            class = "species-card_media",
+                            imageOutput(ns("species_img"), height = "auto")
+                          ),
+                          uiOutput(ns("species_details")),
+                          uiOutput(ns("species_summary"))
+                        )
                       )
                     )
                   )
@@ -153,13 +192,13 @@ server <- function(id) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
 
-    Scheme_Browser <- reactiveValues(download_status = "")
+    Scheme_Browser <- reactiveValues(download_status = "", last_download = NULL)
 
     # Render scheme selector
     output$scheme_selection <- renderUI(
       pickerInput(
         ns("scheme_selector"),
-        NULL,
+        "Select Scheme",
         choices = gsub("_", " ", cgmlst_org_schemes$species),
         choicesOpt = list(
           subtext = rep("cgMLST", nrow(cgmlst_org_schemes))
@@ -288,31 +327,40 @@ server <- function(id) {
     output$db_name_input <- renderUI({
       textInput(
         ns("db_name"),
-        "Choose name",
-        value = gsub(" ", "_", gsub("/", "_", input$scheme_selector))
+        "Define Database Name",
+        value = gsub(" ", "_", gsub("/", "_", input$scheme_selector)),
+        placeholder = "No database name defined ..."
       )
     })
 
-    output$selected_dir <- renderUI({
-      req(input$db_name)
+    output$selected_dir <- renderText({
+      message(paste(Sys.time(), "--- Render output$selected_dir"))
+      # req(input$db_name)
 
       download_path <- parseDirPath(
         roots = c(Home = path_home(), Root = "/"),
         input$download_location
       )
 
+      foo1 <<- download_path
+      foo2 <<- input$db_name
+
       if (
         !length(download_path) ||
           !is.character(download_path)
       ) {
         "No location selected ..."
+      } else if (
+        is.null(input$db_name) || !length(input$db_name) || input$db_name == ""
+      ) {
+        "No database name ..."
       } else {
         paste(
-          "Target location:",
           file.path(download_path, paste0(input$db_name, ".db"))
         )
       }
-    })
+    }) |>
+      bindEvent(list(input$db_name, input$download_location))
 
     # Observe download button status
     observe({
@@ -326,6 +374,7 @@ server <- function(id) {
       if (
         !is.null(input$db_name) &&
           length(input$db_name) &&
+          input$db_name != "" &&
           length(download_path) &&
           is.character(download_path)
       ) {
@@ -340,17 +389,16 @@ server <- function(id) {
 
     # Event scheme download
     observeEvent(input$scheme_download, {
-      download_path <- parseDirPath(
-        roots = c(Home = path_home(), Root = "/"),
-        input$download_location
+      db_location <- assemble_db_location(
+        input$download_location,
+        input$db_name
       )
-
-      db_location <- file.path(download_path, paste0(input$db_name, ".db"))
+      req(db_location)
 
       # If database already exists exit
       if (file.exists(db_location)) {
         show_toast(
-          title = NULL,
+          title = "Error",
           text = paste(db_location, "already exists"),
           type = "error",
           timer = 5000,
@@ -378,21 +426,6 @@ server <- function(id) {
       w$show()
       on.exit(w$hide())
 
-      # # Define DB location
-      # db_name <- gsub(" ", "_", gsub("/", "_", input$scheme_selector))
-      # db_location <- file.path(
-      #   tempdir(),
-      #   paste0(db_name, ".db")
-      # )
-      # n <- 1
-      # while (file.exists(db_location)) {
-      #   db_location <- file.path(
-      #     tempdir(),
-      #     paste0(input$scheme_selector, n, ".db")
-      #   )
-      #   n <- n + 1
-      # }
-
       # Run download
       status <- download_cgmlst_scheme(
         input$scheme_selector,
@@ -415,17 +448,36 @@ server <- function(id) {
           input$scheme_selector,
           "was successful."
         )
+
+        # Remember the path of the last successful download so the
+        # "Load Database" click hands over this database rather than the
+        # current (possibly changed) input selection.
+        Scheme_Browser$last_download <- db_location
+
+        shinyjs::enable("load_db")
       }
 
       # Return status
       show_toast(
-        title = NULL,
+        title = ifelse(status$status == 0, "Success", "Error"),
         text = download_status,
         type = ifelse(status$status == 0, "success", "error"),
         timer = 5000,
         timerProgressBar = TRUE
       )
-      output$download_status <- renderUI(download_status)
     })
+
+    # Disable load_db button on each scheme change
+    observeEvent(input$scheme_selector, {
+      shinyjs::disable("load_db")
+    })
+
+    # Return values: surface the "Load Database" click and the path of the
+    # last successful download so the parent module can hand it over to the
+    # startup module.
+    reactiveValues(
+      load_db = reactive(input$load_db),
+      db_location = reactive(Scheme_Browser$last_download)
+    )
   })
 }

@@ -1,4 +1,20 @@
 // Custom classes
+.btn {
+    --bs-btn-disabled-opacity: 0.3;
+}
+
+.swal2-container {
+    z-index: 9999;
+    width: unset !important;
+}
+
+.swal2-popup.swal2-icon-error {
+    background: #ffe4e4 !important;
+}
+
+.swal2-popup.swal2-icon-success {
+    background: #eeffe5 !important;
+}
 
 #app-startup-selected_database td:nth-child(2) {
     font-style: italic;
@@ -218,48 +234,76 @@
     margin: 0.5rem 0 0;
 }
 
-#scheme-download-selection {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 2rem;
+#scheme-selection .form-group {
+    width: 100%;
 }
 
-#scheme-download-selection .form-group {
+#scheme-selection .btn {
+    border: 1px solid black;
+}
+
+#location-define-ui,
+#download-buttons {
+    display: flex;
+    gap: 1rem;
+}
+
+#download-buttons .btn {
+    width: 100%;
+}
+
+#location-selected-ui {
+    display: flex;
+    gap: 1rem;
+    justify-content: space-between;
+}
+
+#location-selected-ui pre {
+    margin: 0;
+    width: 100%;
+}
+
+#app-scheme_browser-download_location {
+    width: 50%;
+}
+
+#target-location {
+    white-space: nowrap;
+    align-content: center;
+}
+
+#app-scheme_browser-db_name_input .form-group {
     margin-bottom: unset;
-    min-width: 600px;
+    width: 50%;
+}
+
+label {
+    font-size: 0.8em;
+    font-style: italic;
 }
 
 #app-scheme_browser-scheme_download {
     min-width: 235px;
 }
 
-#app-scheme_browser-download_status_ui {
-    flex-basis: 100%;
-    max-width: fit-content;
-}
-
-#app-scheme_browser-download_status {
-    overflow-wrap: break-word;
-}
-
-#scheme-download-selection .dropdown-menu li a .text {
+#scheme-selection .dropdown-menu li a .text {
     display: flex;
     justify-content: space-between;
     align-items: center;
     width: 100%;
 }
 
-#scheme-download-selection .dropdown-menu li a .text .text-muted {
+#scheme-selection .dropdown-menu li a .text .text-muted {
     margin-left: 1rem;
 }
 
-#scheme-download-selection .filter-option-inner-inner {
+#scheme-selection .filter-option-inner-inner {
     display: flex;
     justify-content: space-between;
     align-items: center;
 }
 
-#scheme-download-selection .filter-option-inner-inner .text-muted {
+#scheme-selection .filter-option-inner-inner .text-muted {
     margin-left: 1rem;
     margin-right: 1rem;
 }

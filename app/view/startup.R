@@ -80,12 +80,26 @@ ui <- function(id) {
 }
 
 #' @export
-server <- function(id) {
+server <- function(id, external_db = shiny::reactive(NULL)) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
 
     # Reactive values
     Startup <- reactiveValues(db_location = NULL)
+
+    # Observe a database location supplied from outside (e.g. a freshly
+    # downloaded scheme from the scheme browser) as an alternative to the
+    # shinyFileChoose selection.
+    observeEvent(external_db(), {
+      db_path <- external_db()
+      req(!is.null(db_path), length(db_path), is.character(db_path))
+
+      Startup$db_location <- if (file.exists(db_path)) {
+        c("Currently selected:", db_path)
+      } else {
+        c("Currently selected:", NA)
+      }
+    })
 
     # Render PhyloTrace logo
     output$phylotrace_large <- renderImage(
@@ -184,8 +198,11 @@ server <- function(id) {
             db_time
           )
         ),
+        class = 'stripe row-border order-column',
         colnames = c("", ""),
         rownames = FALSE,
+        escape = FALSE,
+        selection = "none",
         options = list(dom = "t", ordering = FALSE)
       )
     })

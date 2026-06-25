@@ -28,8 +28,6 @@ download_cgmlst_scheme <- function(
 ) {
   message("Initiated scheme download")
 
-  foo1 <<- scheme
-
   download_status <- tryCatch(
     run(
       command = "conda",

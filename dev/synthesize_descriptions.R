@@ -1,6 +1,6 @@
 # dev/synthesize_descriptions.R
 #
-# Replaces the Wikipedia-sourced summaries in species_metadata.json with
+# Replaces the existing summaries in species_metadata.json with
 # concise, editorially synthesized descriptions written for this cgMLST
 # scheme browser. Each description follows a fixed 3-sentence template:
 #   1. identity & morphology (Gram reaction, shape, oxygen, family)
@@ -356,9 +356,6 @@ if (length(missing) > 0) {
 records <- lapply(records, function(r) {
   r$summary <- unname(descriptions[[r$species]])
   r$summary_source <- "synthesized"
-  # Wikipedia-derived fields are no longer the source of the description.
-  r$thumbnail <- NULL
-  r$wikipedia_url <- NULL
   # Flag multi-taxon complex schemes (abb ends in _complex) for the UI badge.
   if (grepl("_complex$", r$abb)) {
     r$rank <- "complex"

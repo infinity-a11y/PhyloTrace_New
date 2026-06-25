@@ -3,7 +3,6 @@
 # Reads app/logic/data/cgmlst_schemes.csv and enriches each bacterial species
 # with metadata fetched from public sources:
 #   * NCBI Taxonomy (E-utilities) -> TaxID, rank, full lineage
-#   * Wikipedia REST API          -> description summary, thumbnail, article URL
 #
 # Output: app/logic/data/species_metadata.json
 #
@@ -89,24 +88,6 @@ ncbi_taxonomy <- function(name) {
   )
 }
 
-wikipedia_summary <- function(name) {
-  title <- URLencode(name, reserved = TRUE)
-  url <- paste0("https://en.wikipedia.org/api/rest_v1/page/summary/", title)
-  js <- http_get(url)
-  if (is.null(js)) return(NULL)
-  d <- tryCatch(fromJSON(js), error = function(e) NULL)
-  if (is.null(d) || !is.null(d$type) && grepl("not_found", d$type)) return(NULL)
-  list(
-    summary = d$extract,
-    thumbnail = if (!is.null(d$thumbnail)) d$thumbnail$source else NULL,
-    wikipedia_url = if (!is.null(d$content_urls)) {
-      d$content_urls$desktop$page
-    } else {
-      NULL
-    }
-  )
-}
-
 # --- main ------------------------------------------------------------------
 # Only runs when executed directly (Rscript), not when source()d for helpers.
 main <- function() {
@@ -121,8 +102,6 @@ for (i in seq_len(nrow(schemes))) {
 
   tax <- ncbi_taxonomy(query)
   Sys.sleep(0.4) # respect NCBI rate limits (<3 req/s without key)
-  wiki <- wikipedia_summary(query)
-  Sys.sleep(0.2)
 
   records[[i]] <- c(
     list(
@@ -130,8 +109,7 @@ for (i in seq_len(nrow(schemes))) {
       abb = schemes$abb[i],
       query_name = query
     ),
-    if (!is.null(tax)) tax else list(ncbi_taxid = NA, lineage = NULL),
-    if (!is.null(wiki)) wiki else list(summary = NA)
+    if (!is.null(tax)) tax else list(ncbi_taxid = NA, lineage = NULL)
   )
 }
 

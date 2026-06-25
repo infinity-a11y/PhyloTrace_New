@@ -6,6 +6,8 @@ box::use(
   tibble[add_row],
   shiny[HTML],
   jsonlite[fromJSON],
+  shinyFiles[parseDirPath],
+  fs[path_home],
 )
 
 box::use(
@@ -28,6 +30,37 @@ species_metadata <- function() {
 # Normalise a species name so spaces and underscores compare equal
 # (e.g. "Providencia stuartii" vs "Providencia_stuartii").
 .norm_species <- function(x) gsub("[ _]+", "_", trimws(x))
+
+#' Assemble a database file path from a shinyFiles directory selection and a
+#' user-defined database name.
+#'
+#' `download_location` is the raw `shinyDirChoose` input value and `db_name`
+#' the raw text input. The name is sanitised to a safe filename and a `.db`
+#' suffix is appended. Returns `NULL` when either input is missing or empty,
+#' so callers can guard on a complete selection.
+#' @export
+assemble_db_location <- function(download_location, db_name) {
+  download_path <- parseDirPath(
+    roots = c(Home = path_home(), Root = "/"),
+    download_location
+  )
+
+  if (!length(download_path) || !is.character(download_path)) {
+    return(NULL)
+  }
+
+  if (is.null(db_name) || !length(db_name) || db_name == "") {
+    return(NULL)
+  }
+
+  db_name_safe <- gsub("[^a-zA-Z0-9_-]", "", db_name)
+
+  if (db_name_safe == "") {
+    return(NULL)
+  }
+
+  file.path(download_path, paste0(db_name_safe, ".db"))
+}
 
 #' @export
 get_species_img <- function(species_select) {
