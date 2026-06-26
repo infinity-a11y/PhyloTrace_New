@@ -33,12 +33,12 @@ box::use(
     page_fillable,
     nav_panel,
     sidebar,
-    bs_theme,
     layout_columns,
     card,
     card_header,
     card_body,
     card_title,
+    tooltip,
     as_fill_item,
     as_fillable_container,
     as_fill_carrier
@@ -112,8 +112,25 @@ ui <- function(id) {
                   card(
                     fill = FALSE,
                     card_header(
-                      class = "bg-dark",
-                      "Initiate New Database"
+                      class = "bg-dark help-header",
+                      "Initiate New Database",
+                      tooltip(
+                        div(
+                          class = "tooltip-bttn",
+                          actionButton(
+                            ns("initiate_db_tooltip_bttn"),
+                            label = NULL,
+                            icon = icon("circle-question")
+                          )
+                        ),
+                        paste(
+                          "Pick a target folder and enter a name for the new",
+                          "database, then 'Download Scheme' to fetch the selected",
+                          "cgMLST scheme into it. Once the download completes,",
+                          "'Load Database' opens it for typing and analysis."
+                        ),
+                        placement = "bottom"
+                      )
                     ),
                     card_body(
                       div(
@@ -202,7 +219,7 @@ server <- function(id) {
       pickerInput(
         ns("scheme_selector"),
         "Select Scheme",
-        choices = gsub("_", " ", cgmlst_org_schemes$species),
+        choices = sort(gsub("_", " ", cgmlst_org_schemes$species)),
         choicesOpt = list(
           subtext = rep("cgMLST", nrow(cgmlst_org_schemes))
         ),

@@ -9,6 +9,7 @@ box::use(
     reactiveValues,
     observe,
     observeEvent,
+    outputOptions,
     req,
     invalidateLater,
     renderUI,
@@ -27,12 +28,10 @@ box::use(
   bslib[
     page_sidebar,
     sidebar,
-    card,
-    card_header,
-    card_body,
-    layout_columns,
     accordion,
     accordion_panel,
+    accordion_panel_close,
+    as_fill_item,
     tooltip,
   ],
   shinyFiles[
@@ -44,7 +43,7 @@ box::use(
     parseDirPath,
   ],
   shinyWidgets[progressBar, updateProgressBar, show_toast],
-  shinyjs[useShinyjs, disabled, toggleState],
+  shinyjs[runjs, useShinyjs, disabled, toggleState],
   DT[DTOutput, renderDT, datatable],
   fs[path_home],
 )
@@ -126,7 +125,8 @@ ui <- function(id) {
           paste(
             "Select a single assembled genome (.fasta, .fa, .fna) or a folder",
             "of assemblies to type against the loaded scheme."
-          )
+          ),
+          placement = "right"
         )
       ),
       width = 320,
@@ -189,8 +189,7 @@ ui <- function(id) {
       disabled(actionButton(
         ns("start"),
         "Start Typing",
-        icon = icon("play"),
-        class = "btn-primary"
+        icon = icon("play")
       )),
       disabled(actionButton(
         ns("terminate"),
@@ -212,44 +211,42 @@ ui <- function(id) {
       ),
       textOutput(ns("current_strain"))
     ),
-    layout_columns(
-      col_widths = c(6, 6),
-      card(
-        full_screen = TRUE,
-        card_header(
-          class = "bg-dark",
-          "Selected Genomes"
+    as_fill_item(
+      accordion(
+        id = ns("typing_accordion"),
+        open = "Selected Genomes",
+        multiple = FALSE,
+        class = "typing-accordion",
+        accordion_panel(
+          "Selected Genomes",
+          icon = icon("dna"),
+          DTOutput(ns("selection_table"))
         ),
-        card_body(DTOutput(ns("selection_table")))
-      ),
-      card(
-        full_screen = TRUE,
-        card_header(
-          class = "bg-dark",
-          "Typing Log"
-        ),
-        card_body(
-          max_height = 320,
+        accordion_panel(
+          "Typing Log",
+          icon = icon("terminal"),
           verbatimTextOutput(ns("log"))
+        ),
+        accordion_panel(
+          "Typing Results",
+          icon = icon("table"),
+          DTOutput(ns("results_table"))
         )
       )
-    ),
-    card(
-      full_screen = TRUE,
-      card_header(
-        class = "bg-dark",
-        "Results"
-      ),
-      card_body(DTOutput(ns("results_table")))
     )
   )
 }
 
 #' @export
-server <- function(id, db_path = shiny::reactive(NULL)) {
+server <- function(
+  id,
+  db_path = shiny::reactive(NULL),
+  session_reset = shiny::reactive(0L)
+) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
 
+    # Typing reactive values
     Typing <- reactiveValues(
       genome_input = NULL,
       files = character(0),
@@ -263,12 +260,53 @@ server <- function(id, db_path = shiny::reactive(NULL)) {
     )
     log_text <- reactiveVal("")
 
+    # Reset server reactives on session reset
+    observeEvent(
+      session_reset(),
+      {
+        if (!is.null(Typing$proc) && Typing$proc$is_alive()) {
+          Typing$terminated <- TRUE
+          tryCatch(Typing$proc$kill(), error = function(e) NULL)
+        }
+        Typing$genome_input <- NULL
+        Typing$files <- character(0)
+        Typing$strains <- character(0)
+        Typing$proc <- NULL
+        Typing$log_file <- NULL
+        Typing$status <- "idle"
+        Typing$results <- NULL
+        Typing$terminated <- FALSE
+        Typing$refresh <- 0L
+        log_text("")
+        updateProgressBar(session, "progress", value = 0, total = 1)
+        runjs(sprintf(
+          "var el = document.getElementById('%s'); if (el) el.classList.remove('is-animating');",
+          ns("progress")
+        ))
+        runjs(sprintf(
+          "(function(){
+           var acc = document.getElementById('%s');
+           if (!acc) return;
+           var item = acc.querySelector('[data-value=\"Selected Genomes\"]');
+           if (!item) return;
+           var btn = item.querySelector('.accordion-button.collapsed');
+           if (btn) btn.click();
+         })();",
+          ns("typing_accordion")
+        ))
+      },
+      ignoreInit = TRUE
+    )
+
+    # Define roots
     roots <- c(Home = path_home(), Root = "/")
 
+    # Condition helper
     or_default <- function(x, default) {
       if (is.null(x) || length(x) != 1 || is.na(x)) default else x
     }
 
+    # Valid db checker reactive
     valid_db <- reactive({
       path <- db_path()
       !is.null(path) &&
@@ -496,12 +534,35 @@ server <- function(id, db_path = shiny::reactive(NULL)) {
       )
     })
 
+    # Keep selection_table and results_table reactive while their panel is absent
+    # from the DOM (after nav_remove on reset). Without this, outputs suspend when
+    # the panel is removed and still hold the stale pre-reset cached value; when
+    # the panel is re-inserted Shiny re-sends that stale cache first, causing a
+    # one-frame flicker before the reset state arrives.
+    outputOptions(output, "selection_table", suspendWhenHidden = FALSE)
+    outputOptions(output, "results_table", suspendWhenHidden = FALSE)
+
     # Start typing
     observeEvent(input$start, {
       req(valid_db(), length(Typing$strains) > 0)
       if (identical(Typing$status, "running")) {
         return()
       }
+
+      # Click the "Typing Results" accordion button directly via Bootstrap's API
+      # rather than bslib's server-side message, which can race against the
+      # reactive flush and miss the transition.
+      runjs(sprintf(
+        "(function(){
+           var acc = document.getElementById('%s');
+           if (!acc) return;
+           var item = acc.querySelector('[data-value=\"Typing Results\"]');
+           if (!item) return;
+           var btn = item.querySelector('.accordion-button.collapsed');
+           if (btn) btn.click();
+         })();",
+        ns("typing_accordion")
+      ))
 
       Typing$log_file <- tempfile(fileext = ".log")
       file.create(Typing$log_file)
@@ -535,6 +596,10 @@ server <- function(id, db_path = shiny::reactive(NULL)) {
 
       Typing$proc <- proc
       Typing$status <- "running"
+      runjs(sprintf(
+        "var el = document.getElementById('%s'); if (el) el.classList.add('is-animating');",
+        ns("progress")
+      ))
       updateProgressBar(
         session,
         "progress",
@@ -594,6 +659,10 @@ server <- function(id, db_path = shiny::reactive(NULL)) {
 
       # Finished (completed or killed)
       Typing$status <- if (isTRUE(Typing$terminated)) "terminated" else "done"
+      runjs(sprintf(
+        "var el = document.getElementById('%s'); if (el) el.classList.remove('is-animating');",
+        ns("progress")
+      ))
       Typing$refresh <- Typing$refresh + 1L
 
       added <- sum(results$status == "Added")

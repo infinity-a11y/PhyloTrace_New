@@ -3,6 +3,218 @@
     --bs-btn-disabled-opacity: 0.3;
 }
 
+// Card header with a help tooltip pushed to the far right.
+.help-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+// Help icon button inside a card header: looks like a plain icon, not a button.
+.tooltip-bttn .btn {
+    background: transparent;
+    border: none;
+    padding: 0;
+    line-height: 1;
+    color: inherit;
+    opacity: 0.75;
+}
+
+.tooltip-bttn .btn:hover {
+    opacity: 1;
+}
+
+.navbar .btn {
+    border: none;
+    min-width: fit-content;
+    padding: 8px;
+    height: 100%;
+    width: 39px;
+}
+
+.modal-header>button {
+    display: none;
+}
+
+// Visualization module -------------------------------------------------------
+
+.viz-nav-wrap .card-header {
+    padding: 0;
+}
+
+.viz-nav-wrap .card-header-tabs {
+    flex-wrap: nowrap;
+    gap: 0;
+    margin: 0;
+    width: 100%;
+}
+
+.viz-nav-wrap .nav-item {
+    flex: 1 1 0;
+    display: flex;
+    min-width: 0;
+}
+
+.viz-nav-wrap .nav-link {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    padding: 0.3rem 0;
+    font-size: 0.6rem;
+    line-height: 1;
+    border: none !important;
+    border-bottom: 2px solid transparent !important;
+    border-radius: 0 !important;
+    color: var(--bs-secondary-color);
+    min-width: 0;
+    overflow: hidden;
+}
+
+.viz-nav-wrap .nav-link i,
+.viz-nav-wrap .nav-link svg {
+    font-size: 14px;
+}
+
+.viz-nav-wrap .nav-link.active {
+    color: var(--bs-primary);
+    border-bottom-color: var(--bs-primary) !important;
+    background: transparent;
+}
+
+.viz-nav-wrap .nav-link:hover:not(.active) {
+    color: var(--bs-body-color);
+    background: var(--bs-tertiary-bg);
+}
+
+.viz-nav-wrap .card-body {
+    overflow-y: auto;
+    padding: 0.75rem;
+}
+
+.viz-sidebar-title {
+    display: flex;
+    align-items: start;
+    gap: 1rem;
+}
+
+.viz-color-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+}
+
+.viz-color-row {
+    display: grid;
+    grid-template-columns: 1fr 6rem;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.viz-color-label {
+    font-size: 0.9rem;
+}
+
+.viz-color-pick .shiny-input-container {
+    margin-bottom: 0;
+}
+
+// Export menu: stacked full-width controls.
+.viz-export {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+// Plot preview placeholder shown before a plot is generated.
+.viz-plot-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    min-height: 320px;
+    gap: 1rem;
+    color: #6c7a89;
+    text-align: center;
+}
+
+.viz-plot-icon {
+    font-size: 3rem;
+    opacity: 0.35;
+}
+
+// Generated preview: contain the example image within the card.
+.viz-plot-stage {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+}
+
+.viz-plot-img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+}
+
+// Analysis Dashboard module ---------------------------------------------------
+
+// Vertical stack of group cards in the main panel.
+.ad-group-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 25px;
+    padding: 5px;
+    width: 100%;
+}
+
+// Group card header: title on the left, delete button on the right.
+.ad-group-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+}
+
+// Group title. Theme-aware so it stays legible in dark mode.
+.ad-group-name {
+    font-size: 1.25rem;
+    color: var(--bs-emphasis-color);
+}
+
+// Created / last-modified line under the group header.
+.ad-group-meta {
+    display: flex;
+    gap: 20px;
+    margin-bottom: 12px;
+    font-size: 0.8rem;
+    color: var(--bs-secondary-color);
+}
+
+// Floating edit / delete controls inside an analysis value box.
+.ad-box-actions {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    z-index: 10;
+    display: flex;
+    gap: 5px;
+}
+
+// Empty-state messages (no groups / inactive selection).
+.ad-empty {
+    color: var(--bs-secondary-color);
+    font-style: italic;
+}
+
+.ad-empty-block {
+    text-align: center;
+    margin-top: 50px;
+}
+
 // Database sidebar menu buttons: left-align icon + label
 .db-menu-item {
     text-align: left;
@@ -31,18 +243,54 @@
     font-family: monospace;
 }
 
-// Allelic Typing sidebar header: title on the left, info tooltip icon pushed to
-// the far right with a guaranteed gap between them.
-.typing-sidebar-title {
+// Typing accordion: fills the remaining vertical space in the page and keeps
+// the open panel's body scrollable so content never overflows the page.
+// Uses CSS :has() (supported in all modern browsers) to identify the open item.
+.typing-accordion {
     display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 1rem;
+    flex-direction: column;
+
+    // Collapsed items take only their header height.
+    .accordion-item {
+        flex: 0 0 auto;
+    }
+
+    // The open item stretches to fill the remaining height.
+    // It becomes a flex column so the header and the collapse body divide space.
+    .accordion-item:has(.accordion-collapse.show) {
+        flex: 1 1 auto;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+    }
+
+    // The shown collapse grows within the open item and becomes its own flex
+    // column so .accordion-body can fill it reliably (avoiding height:100% in
+    // a flex chain, which requires an explicit parent height to resolve).
+    .accordion-collapse.show {
+        flex: 1 1 auto;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+
+        .accordion-body {
+            flex: 1 1 auto;
+            min-height: 0;
+            overflow-y: auto;
+        }
+    }
+
+    // Suppress Bootstrap's height-based collapse animation; it conflicts with
+    // flex sizing and causes a jump when the open panel switches.
+    .accordion-collapse {
+        transition: none !important;
+    }
 }
 
-.typing-sidebar-title i {
-    font-size: 1rem;
-    cursor: help;
+.typing-sidebar-title {
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
 }
 
 .progress {
@@ -52,7 +300,29 @@
     font-size: 2em;
 }
 
-// Selected menu button keeps the hover colour to indicate the active panel.
+// 3× wide gradient: solid → shimmer peak → solid.
+// background-position 0%→100% shifts the view one full element-width,
+// arriving at the right solid that is visually identical to the left solid,
+// so the loop wraps without any visible jump.
+@keyframes progress-shimmer {
+    0% {
+        background-position: 0% center;
+    }
+
+    100% {
+        background-position: 100% center;
+    }
+}
+
+#app-typing-progress.is-animating {
+    background-image: linear-gradient(90deg,
+            var(--bs-primary) 30%,
+            color-mix(in srgb, var(--bs-primary) 45%, white) 50%,
+            var(--bs-primary) 70%) !important;
+    background-size: 300% 100%;
+    animation: progress-shimmer 2s linear infinite;
+}
+
 .db-menu-item.active {
     color: var(--bs-btn-hover-color);
     background-color: var(--bs-btn-hover-bg);
@@ -68,8 +338,8 @@
 #app-startup-load_database {
     width: 100%;
     font-size: 1.2em;
+    margin-top: 2rem;
     height: 4rem;
-    margin-top: 3rem;
 }
 
 .swal2-container {
@@ -167,14 +437,6 @@
     justify-self: center;
 }
 
-// Navbar session controls (loaded database + reset)
-#session-controls {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-    height: 100%;
-}
-
 #loaded-db-path {
     font-family: monospace;
     max-width: 30rem;
@@ -270,7 +532,8 @@
 .species-details_name {
     font-size: 1.3rem;
     font-weight: 600;
-    color: #1f2d3d;
+    // Theme-aware so it stays legible in dark mode (sits on the card background).
+    color: var(--bs-emphasis-color);
     margin-right: 0.5rem;
 }
 
@@ -335,7 +598,8 @@
 
 .species-details_summary {
     line-height: 1.55;
-    color: #3a3f44;
+    // Follows the active theme so it inverts to light text in dark mode.
+    color: var(--bs-body-color);
     font-size: 0.92rem;
     text-align: justify;
     margin: 0.5rem 0 0;
@@ -453,6 +717,23 @@ label {
     width: fit-content !important;
 }
 
+.progress-bar-striped {
+    background-image: var(--bs-primary-rgb);
+}
+
+// shinyFiles detail-view column header hardcodes a light (whitesmoke) background
+// in its own stylesheet, so in dark mode the theme's light text sits on a light
+// strip and is unreadable. Re-tint the header (and its column separators) for
+// dark mode only; the attribute selector outranks the shinyFiles rule.
+[data-bs-theme="dark"] .sF-fileList.sF-detail .sF-file-header {
+    background: var(--bs-tertiary-bg);
+    color: var(--bs-body-color);
+}
+
+[data-bs-theme="dark"] .sF-fileList.sF-detail .sF-file-header>div>div+div::before {
+    background-image: linear-gradient(var(--bs-tertiary-bg), var(--bs-border-color));
+}
+
 // Navbar
 #navbar-title {
     display: flex;
@@ -483,7 +764,9 @@ label {
 }
 
 .btn-attention {
-    --attention-color: 0, 0, 0;
+    // Theme-aware (black in light mode, white in dark) so the pulse stays
+    // visible against the navbar/background after a light/dark toggle.
+    --attention-color: var(--bs-emphasis-color-rgb);
     border-color: rgba(var(--attention-color), 0.9);
     animation: btn-attention-pulse 2s ease-in-out infinite;
 }

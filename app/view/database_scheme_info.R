@@ -4,7 +4,7 @@
 # the panel computes its own state independently of the other menu entries.
 
 box::use(
-  shiny[NS, moduleServer, div, h2],
+  shiny[NS, moduleServer, observeEvent, div, h2],
   bslib[as_fill_carrier],
 )
 

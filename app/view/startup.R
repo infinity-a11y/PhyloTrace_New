@@ -11,6 +11,7 @@ box::use(
     h4,
     req,
     reactiveValues,
+    reactiveVal,
     div,
     imageOutput,
     observe,
@@ -22,9 +23,11 @@ box::use(
     modalButton,
     showModal,
     selectInput,
+    tags,
   ],
   waiter[Waiter, spin_3, transparent, spin_flower],
   fs[dir_ls, path_home],
+  jsonlite[fromJSON],
   bslib[page_fillable],
   shinyFiles[
     shinyFileChoose,
@@ -37,7 +40,7 @@ box::use(
 
 box::use(
   app / logic / functions[render_info],
-  app / logic / paths[app_local_share_path, stat_json],
+  app / logic / paths[stat_json],
 )
 
 #' @export
@@ -89,9 +92,18 @@ server <- function(id, external_db = shiny::reactive(NULL)) {
     # Reactive values
     Startup <- reactiveValues(db_location = NULL)
 
+    # Combined load trigger: incremented by the UI button and by the external
+    # db observer so that both paths share one downstream observeEvent.
+    load_trigger <- reactiveVal(NULL)
+    fire_load <- function() {
+      n <- load_trigger()
+      load_trigger(if (is.null(n)) 1L else n + 1L)
+    }
+
     # Observe a database location supplied from outside (e.g. a freshly
     # downloaded scheme from the scheme browser) as an alternative to the
-    # shinyFileChoose selection.
+    # shinyFileChoose selection. When the path is valid, also auto-trigger the
+    # load so the user doesn't have to press "Load Database" manually.
     observeEvent(external_db(), {
       db_path <- external_db()
       req(!is.null(db_path), length(db_path), is.character(db_path))
@@ -101,6 +113,12 @@ server <- function(id, external_db = shiny::reactive(NULL)) {
       } else {
         c("Currently selected:", NA)
       }
+
+      if (!is.na(Startup$db_location[2])) fire_load()
+    })
+
+    observeEvent(input$load_database, {
+      fire_load()
     })
 
     # Render PhyloTrace logo
@@ -161,12 +179,14 @@ server <- function(id, external_db = shiny::reactive(NULL)) {
 
       render_info("output$database_selection")
 
+      db_unselected <- is.na(Startup$db_location[2])
+
       load_button <- actionButton(
         ns("load_database"),
         "Load Database"
       )
 
-      if (is.na(Startup$db_location[2])) {
+      if (db_unselected) {
         # Case no database selected
         table <- "No database selected"
         load_button <- disabled(load_button)
@@ -225,7 +245,7 @@ server <- function(id, external_db = shiny::reactive(NULL)) {
     # Return values
     reactiveValues(
       create_scheme = shiny::reactive(input$create_new_db),
-      load_database = shiny::reactive(input$load_database),
+      load_database = shiny::reactive(load_trigger()),
       db_path = shiny::reactive(Startup$db_location[2])
     )
   })

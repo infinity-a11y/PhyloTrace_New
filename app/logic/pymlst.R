@@ -67,7 +67,7 @@ read_database <- function(db_path) {
   ))
 
   # Connect to database
-  con <- dbConnect(SQLite(), db_path)
+  con <- dbConnect(SQLite(), db_path, synchronous = NULL, busy_timeout = 5000)
 
   # List tables
   tables <- dbListTables(con)
@@ -91,7 +91,7 @@ read_database <- function(db_path) {
 #' @export
 synchronize_database <- function(database, db_path) {
   # Connect to remote database
-  con <- dbConnect(SQLite(), db_path)
+  con <- dbConnect(SQLite(), db_path, synchronous = NULL, busy_timeout = 5000)
 
   # Write local changes
   for (table in names(database)) {
@@ -405,7 +405,7 @@ existing_strains <- function(db_path) {
     return(character(0))
   }
 
-  con <- dbConnect(SQLite(), db_path)
+  con <- dbConnect(SQLite(), db_path, synchronous = NULL, busy_timeout = 5000)
   on.exit(dbDisconnect(con))
 
   if (!"mlst" %in% dbListTables(con)) {
@@ -431,7 +431,7 @@ scheme_size <- function(db_path) {
     return(NA_integer_)
   }
 
-  con <- dbConnect(SQLite(), db_path)
+  con <- dbConnect(SQLite(), db_path, synchronous = NULL, busy_timeout = 5000)
   on.exit(dbDisconnect(con))
 
   if (!"mlst" %in% dbListTables(con)) {
@@ -464,7 +464,7 @@ strain_gene_counts <- function(db_path, strains) {
     return(counts)
   }
 
-  con <- dbConnect(SQLite(), db_path)
+  con <- dbConnect(SQLite(), db_path, synchronous = NULL, busy_timeout = 5000)
   on.exit(dbDisconnect(con))
 
   if (!"mlst" %in% dbListTables(con)) {

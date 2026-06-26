@@ -1,7 +1,7 @@
 # app/view/amr_screening.R
 
 box::use(
-  shiny[NS, moduleServer],
+  shiny[NS, moduleServer, observeEvent],
   bslib[page_sidebar, sidebar],
 )
 
@@ -18,8 +18,12 @@ ui <- function(id) {
 }
 
 #' @export
-server <- function(id) {
+server <- function(id, session_reset = shiny::reactive(0L)) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
+
+    # Reset module state when the user returns to the startup screen.
+    # No local reactive state to clear yet; placeholder for future results UI.
+    observeEvent(session_reset(), {}, ignoreInit = TRUE)
   })
 }

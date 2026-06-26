@@ -13,6 +13,10 @@ app_local_share_path <- file.path(
   "phylotrace"
 )
 
+if (!dir.exists(file.path(app_local_share_path))) {
+  dir.create(file.path(app_local_share_path))
+}
+
 check_status_available <- function(local_share) {
   if (
     file.path(local_share, "state.json") %in%
