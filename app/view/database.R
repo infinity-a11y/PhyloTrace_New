@@ -1,7 +1,7 @@
 # app/view/database.R
 
 box::use(
-  shiny[NS, moduleServer, observeEvent],
+  shiny[NS, moduleServer, observeEvent, reactive],
   bslib[page_sidebar, sidebar, navset_hidden, nav_panel],
   shinyjs[useShinyjs, addClass, removeClass],
 )
@@ -74,13 +74,37 @@ ui <- function(id) {
 }
 
 #' @export
-server <- function(id) {
+server <- function(
+  id,
+  db_path = shiny::reactive(NULL),
+  session_reset = shiny::reactive(0L)
+) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
 
-    # Start each interface module's server under its own namespace.
+    # Reset module state when the user returns to the startup screen.
+    # Switches the visible sub-panel back to Browse Entries and clears the
+    # active highlight from all other sidebar buttons.
+    observeEvent(
+      session_reset(),
+      {
+        bslib::nav_select("pages", selected = "browse_entries")
+        for (item in db_menu) {
+          removeClass(paste0("menu_", item$value), "active")
+        }
+        addClass("menu_browse_entries", "active")
+      },
+      ignoreInit = TRUE
+    )
+
+    # Start each interface module's server under its own namespace and forward
+    # session_reset so each sub-module can reset its own state.
     for (item in db_menu) {
-      item$module$server(item$value)
+      item$module$server(
+        item$value,
+        db_path = db_path,
+        session_reset = session_reset
+      )
     }
 
     # Each menu button switches the main field to its panel and keeps the

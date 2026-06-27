@@ -1,3 +1,23 @@
+// Loading splash screen (waiterShowOnLoad overlay) ----------------------------
+
+@keyframes waiter-fade-in {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+
+.waiter-splash {
+    text-align: center;
+}
+
+.waiter-splash-title {
+    font-family: monospace;
+    font-size: 3em;
+    margin-top: 20px;
+    opacity: 0;
+    animation: waiter-fade-in 0.8s ease-in forwards;
+    animation-delay: 0.6s;
+}
+
 // Custom classes
 .btn {
     --bs-btn-disabled-opacity: 0.3;

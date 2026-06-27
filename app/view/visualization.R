@@ -5,6 +5,7 @@ box::use(
     NS,
     moduleServer,
     observeEvent,
+    outputOptions,
     renderUI,
     uiOutput,
     reactiveVal,
@@ -848,7 +849,11 @@ ui <- function(id) {
 }
 
 #' @export
-server <- function(id, session_reset = shiny::reactive(0L)) {
+server <- function(
+  id,
+  db_path = shiny::reactive(NULL),
+  session_reset = shiny::reactive(0L)
+) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
 
@@ -856,9 +861,13 @@ server <- function(id, session_reset = shiny::reactive(0L)) {
     # preview between its prompt and the (placeholder) rendered image.
     generated <- reactiveVal(FALSE)
 
-    observeEvent(session_reset(), {
-      generated(FALSE)
-    }, ignoreInit = TRUE)
+    observeEvent(
+      session_reset(),
+      {
+        generated(FALSE)
+      },
+      ignoreInit = TRUE
+    )
 
     # Algorithm picker only applies to the hierarchical Tree engine.
     output$algo_ui <- renderUI({
@@ -889,7 +898,11 @@ server <- function(id, session_reset = shiny::reactive(0L)) {
       as_fill_carrier(
         div(
           class = "viz-nav-wrap",
-          if (identical(input$plot_type, "Tree")) tree_controls(ns) else mst_controls(ns)
+          if (identical(input$plot_type, "Tree")) {
+            tree_controls(ns)
+          } else {
+            mst_controls(ns)
+          }
         )
       )
     })
@@ -899,5 +912,12 @@ server <- function(id, session_reset = shiny::reactive(0L)) {
       type <- if (is.null(input$plot_type)) "MST" else input$plot_type
       plot_placeholder(type, generated())
     })
+
+    # Keep all rendered outputs reactive while the visualization panel is absent
+    # from the DOM (removed by nav_remove on session reset) so reset-triggered
+    # reactive changes propagate before the panel is re-inserted.
+    outputOptions(output, "algo_ui", suspendWhenHidden = FALSE)
+    outputOptions(output, "controls", suspendWhenHidden = FALSE)
+    outputOptions(output, "plot_area", suspendWhenHidden = FALSE)
   })
 }

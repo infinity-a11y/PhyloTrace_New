@@ -32,10 +32,11 @@ box::use(
     nav_hide,
     nav_show,
     as_fill_carrier,
-    toggle_dark_mode # Added for native light/dark switching
+    toggle_dark_mode
   ],
   shinyjs[runjs],
   htmltools[tagQuery],
+  waiter[useWaiter, waiterShowOnLoad],
 )
 box::use(
   app / logic / functions[render_info],
@@ -46,17 +47,14 @@ box::use(
   app / view / typing,
   app / view / analysis_dashboard,
   app / view / visualization,
-  app / view / amr_screening,
+  app / view / resistance_screening,
 )
 
-# nav_insert() does not apply the fillable wrapping that page_navbar() gives
-# statically-defined panels, so a panel added at runtime would not fill the
-# page. Marking it as a fill carrier reproduces the static behaviour.
 fillable_panel <- function(...) {
   as_fill_carrier(nav_panel(...))
 }
 
-# shinyFiles asset stripping logic remains unchanged
+# shinyFiles asset stripping logic
 strip_shinyfiles_assets <- function(ui) {
   tagQuery(ui)$find("script")$filter(function(node, i) {
     src <- node$attribs$src
@@ -71,48 +69,62 @@ strip_shinyfiles_assets <- function(ui) {
 ui <- function(id) {
   ns <- NS(id)
 
-  page_navbar(
-    id = ns("tabs"),
-    title = div(
-      id = "navbar-title",
-      tags$img(
-        src = "static/images/PhyloTrace_flat_128.png",
-      ),
-      div("PhyloTrace")
-    ),
-    window_title = "PhyloTrace",
-    # Baseline Bootstrap 5 theme; the navbar button toggles its light/dark mode.
-    theme = bs_theme(version = 5, preset = "shiny"),
-    navbar_options = navbar_options(underline = TRUE),
-    nav_panel(
-      title = "Load Database",
-      value = "startup_panel",
-      startup$ui(ns("startup"))
-    ),
-    nav_panel(
-      title = "Scheme Browser",
-      value = "scheme_browser_panel",
-      scheme_browser$ui(ns("scheme_browser"))
-    ),
-    nav_spacer(),
-    nav_item("v1.6.1"),
-    nav_item(
-      actionButton(
-        inputId = ns("toggle_dark"),
-        label = NULL,
-        icon = icon("moon"),
-        title = "Toggle Light/Dark Mode"
+  tagList(
+    useWaiter(),
+    waiterShowOnLoad(
+      html = div(
+        class = "waiter-splash",
+        tags$img(
+          src = "static/images/PhyloTrace_flat_256.png",
+          width = "200px",
+          height = "200px"
+        ),
+        div(class = "waiter-splash-title", "PhyloTrace")
       )
     ),
-    nav_item(
-      actionButton(
-        inputId = ns("quit"),
-        label = NULL,
-        icon = icon("power-off"),
-        title = "Turn Off"
+    page_navbar(
+      id = ns("tabs"),
+      title = div(
+        id = "navbar-title",
+        tags$img(
+          src = "static/images/PhyloTrace_flat_128.png",
+        ),
+        div("PhyloTrace")
+      ),
+      window_title = "PhyloTrace",
+      # Baseline Bootstrap 5 theme; the navbar button toggles its light/dark mode.
+      theme = bs_theme(version = 5, preset = "shiny"),
+      navbar_options = navbar_options(underline = TRUE),
+      nav_panel(
+        title = "Load Database",
+        value = "startup_panel",
+        startup$ui(ns("startup"))
+      ),
+      nav_panel(
+        title = "Scheme Browser",
+        value = "scheme_browser_panel",
+        scheme_browser$ui(ns("scheme_browser"))
+      ),
+      nav_spacer(),
+      nav_item("v1.6.1"),
+      nav_item(
+        actionButton(
+          inputId = ns("toggle_dark"),
+          label = NULL,
+          icon = icon("moon"),
+          title = "Toggle Light/Dark Mode"
+        )
+      ),
+      nav_item(
+        actionButton(
+          inputId = ns("quit"),
+          label = NULL,
+          icon = icon("power-off"),
+          title = "Turn Off"
+        )
       )
     )
-  )
+  ) # close tagList
 }
 
 #' @export
@@ -158,28 +170,51 @@ server <- function(id) {
       later::later(stopApp, delay = 0.5)
     })
 
-    SCHEME_BROWSER_vals <- scheme_browser$server("scheme_browser")
+    # Shared reset signal: incremented each time the user resets the session.
+    # Modules observe it with ignoreInit = TRUE and tear down their own state.
+    session_reset <- reactiveVal(0L)
+
+    SCHEME_BROWSER_vals <- scheme_browser$server(
+      "scheme_browser",
+      session_reset = session_reset
+    )
 
     scheme_browser_db <- reactive({
       SCHEME_BROWSER_vals$load_db()
       isolate(SCHEME_BROWSER_vals$db_location())
     })
 
-    STARTUP_vals <- startup$server("startup", external_db = scheme_browser_db)
+    STARTUP_vals <- startup$server(
+      "startup",
+      external_db = scheme_browser_db,
+      session_reset = session_reset
+    )
 
-    # Shared reset signal: incremented each time the user resets the session.
-    # Modules observe it with ignoreInit = TRUE and tear down their own state.
-    session_reset <- reactiveVal(0L)
-
-    database$server("database")
+    database$server(
+      "database",
+      db_path = STARTUP_vals$db_path,
+      session_reset = session_reset
+    )
     typing$server(
       "typing",
       db_path = STARTUP_vals$db_path,
       session_reset = session_reset
     )
-    analysis_dashboard$server("analysis_dashboard")
-    visualization$server("visualization", session_reset = session_reset)
-    amr_screening$server("amr_screening")
+    analysis_dashboard$server(
+      "analysis_dashboard",
+      db_path = STARTUP_vals$db_path,
+      session_reset = session_reset
+    )
+    visualization$server(
+      "visualization",
+      db_path = STARTUP_vals$db_path,
+      session_reset = session_reset
+    )
+    resistance_screening$server(
+      "resistance_screening",
+      db_path = STARTUP_vals$db_path,
+      session_reset = session_reset
+    )
 
     observeEvent(STARTUP_vals$create_scheme(), {
       nav_select(id = "tabs", selected = "scheme_browser_panel")
@@ -211,8 +246,10 @@ server <- function(id) {
         ),
         fillable_panel(
           "Resistance Screening",
-          value = "amr_screening_panel",
-          strip_shinyfiles_assets(amr_screening$ui(ns("amr_screening")))
+          value = "resistance_screening_panel",
+          strip_shinyfiles_assets(resistance_screening$ui(ns(
+            "resistance_screening"
+          )))
         )
       )
 
@@ -235,8 +272,7 @@ server <- function(id) {
       }
 
       db_path <- STARTUP_vals$db_path()
-      # Inserted reset first, then loaded-db-path, both "after" the same target,
-      # so the final left-to-right order is: loaded-db-path, then reset.
+
       nav_insert(
         id = "tabs",
         nav = nav_item(
@@ -247,7 +283,7 @@ server <- function(id) {
             title = "Return to the start screen"
           )
         ),
-        target = "amr_screening_panel",
+        target = "resistance_screening_panel",
         position = "after"
       )
 
@@ -263,15 +299,12 @@ server <- function(id) {
             )
           }
         ),
-        target = "amr_screening_panel",
+        target = "resistance_screening_panel",
         position = "after"
       )
 
       nav_hide(id = "tabs", target = "startup_panel")
       nav_hide(id = "tabs", target = "scheme_browser_panel")
-
-      db_path1 <<- db_path
-      stat_json1 <<- stat_json
 
       if (!is.null(stat_json$last_db) && file.exists(stat_json$last_db)) {
         stat_json$last_db <- db_path
@@ -301,7 +334,7 @@ server <- function(id) {
         "analysis_dashboard_panel",
         "visualization_panel",
         "typing_panel",
-        "amr_screening_panel"
+        "resistance_screening_panel"
       )) {
         nav_remove(id = "tabs", target = panel)
       }

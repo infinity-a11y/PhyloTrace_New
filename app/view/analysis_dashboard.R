@@ -12,6 +12,7 @@ box::use(
     modalDialog,
     moduleServer,
     observeEvent,
+    outputOptions,
     p,
     reactiveVal,
     reactiveValues,
@@ -55,7 +56,11 @@ ui <- function(id) {
 }
 
 #' @export
-server <- function(id) {
+server <- function(
+  id,
+  db_path = shiny::reactive(NULL),
+  session_reset = shiny::reactive(0L)
+) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
 
@@ -67,13 +72,27 @@ server <- function(id) {
 
     current_view <- reactiveVal("all")
 
+    # Reset the group list to just the initial group and return to the "all"
+    # view. Dynamic group servers remain alive but hidden; they reset via their
+    # own observer that receives the same session_reset signal.
+    observeEvent(session_reset(), {
+      for (i in seq_len(group_counter())[-1]) {
+        group_names_map[[as.character(i)]] <- NULL
+      }
+      group_names_map[["1"]] <- "Analysis Group"
+      group_counter(1)
+      active_groups(1)
+      current_view("all")
+    }, ignoreInit = TRUE)
+
     group$server(
       id = "group_instance_1",
       assigned_name = "Analysis Group",
       remove_group_callback = function() {
         active_groups(setdiff(active_groups(), 1))
         if (current_view() == "1") current_view("all")
-      }
+      },
+      session_reset = session_reset
     )
 
     observeEvent(input$trigger_group_modal, {
@@ -118,7 +137,8 @@ server <- function(id) {
           remove_group_callback = function() {
             active_groups(setdiff(active_groups(), current_g_id))
             if (current_view() == g_id_str) current_view("all")
-          }
+          },
+          session_reset = session_reset
         )
       })
 
@@ -176,5 +196,11 @@ server <- function(id) {
         group$ui(ns(paste0("group_instance_", g_id)))
       })
     })
+
+    # Keep all rendered outputs reactive while the analysis dashboard panel is
+    # absent from the DOM (removed by nav_remove on session reset) so reset-
+    # triggered reactive changes propagate before the panel is re-inserted.
+    outputOptions(output, "sidebar_navigation", suspendWhenHidden = FALSE)
+    outputOptions(output, "groups_vertical_stack", suspendWhenHidden = FALSE)
   })
 }

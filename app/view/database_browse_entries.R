@@ -4,7 +4,7 @@
 # the panel computes its own state independently of the other menu entries.
 
 box::use(
-  shiny[NS, moduleServer, observeEvent, div, h2],
+  shiny[NS, moduleServer, observeEvent, reactive, div, h2],
   bslib[as_fill_carrier],
 )
 
@@ -21,12 +21,32 @@ ui <- function(id) {
 }
 
 #' @export
-server <- function(id, session_reset = shiny::reactive(0L)) {
+server <- function(
+  id,
+  db_path = shiny::reactive(NULL),
+  session_reset = shiny::reactive(0L)
+) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
 
     # Reset module state when the user returns to the startup screen.
     # No local reactive state to clear yet; placeholder for future browse UI.
     observeEvent(session_reset(), {}, ignoreInit = TRUE)
+
+    shiny::observe({
+      foo <<- db_path()
+    })
+
+    # con <- DBI::dbConnect(RSQLite::SQLite(), ":memory:")
+
+    # db <- RSQLite::dbConnect(foo)
+
+    #dbListTables(con)
+
+    #SELECT DISTINCT column_name
+    #FROM table_name;
+
+    #     res <- dbSendQuery(con, "SELECT * FROM mtcars WHERE cyl = 4")
+    # dbFetch(res)
   })
 }

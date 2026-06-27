@@ -31,12 +31,36 @@ ui <- function(id) {
 }
 
 #' @export
-server <- function(id, default_index, remove_box_callback) {
+server <- function(
+  id,
+  default_index,
+  remove_box_callback,
+  session_reset = shiny::reactive(0L)
+) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
 
+    # Define reactives
     title_text <- reactiveVal(paste("Analysis", default_index))
     is_editing <- reactiveVal(FALSE)
+
+    analysis_classes <- c(
+      "Tree",
+      "MST",
+      "AMR",
+      "Note",
+      "Summary"
+    )
+
+    # Reset the value box to its default label and close any open edit field.
+    observeEvent(
+      session_reset(),
+      {
+        title_text(paste("Analysis", default_index))
+        is_editing(FALSE)
+      },
+      ignoreInit = TRUE
+    )
 
     observeEvent(input$toggle_edit, {
       if (is_editing()) {
@@ -51,7 +75,7 @@ server <- function(id, default_index, remove_box_callback) {
 
     observeEvent(input$trigger_delete_box, {
       showModal(modalDialog(
-        title = "Delete Value Box",
+        title = "Delete Analysis",
         paste0(
           "Are you sure you want to permanently delete '",
           title_text(),

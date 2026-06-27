@@ -149,7 +149,7 @@ ui <- function(id) {
         root = path_home()
       ),
       accordion(
-        open = FALSE,
+        open = TRUE,
         accordion_panel(
           "Parameters",
           icon = icon("sliders"),
@@ -541,6 +541,8 @@ server <- function(
     # one-frame flicker before the reset state arrives.
     outputOptions(output, "selection_table", suspendWhenHidden = FALSE)
     outputOptions(output, "results_table", suspendWhenHidden = FALSE)
+    outputOptions(output, "log", suspendWhenHidden = FALSE)
+    outputOptions(output, "status_badge", suspendWhenHidden = FALSE)
 
     # Start typing
     observeEvent(input$start, {

@@ -38,7 +38,7 @@ ui <- function(id) {
 }
 
 #' @export
-server <- function(id, assigned_name, remove_group_callback) {
+server <- function(id, assigned_name, remove_group_callback, session_reset = shiny::reactive(0L)) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
 
@@ -53,6 +53,14 @@ server <- function(id, assigned_name, remove_group_callback) {
       modified_timestamp(Sys.time())
     }
 
+    # Reset all value boxes back to a single box with default state and title.
+    observeEvent(session_reset(), {
+      box_counter(1)
+      active_boxes(1)
+      group_name(assigned_name)
+      modified_timestamp(Sys.time())
+    }, ignoreInit = TRUE)
+
     local({
       initial_box_id <- 1
       item$server(
@@ -61,7 +69,8 @@ server <- function(id, assigned_name, remove_group_callback) {
         remove_box_callback = function() {
           active_boxes(setdiff(active_boxes(), initial_box_id))
           touch_group()
-        }
+        },
+        session_reset = session_reset
       )
     })
 
@@ -77,7 +86,8 @@ server <- function(id, assigned_name, remove_group_callback) {
           remove_box_callback = function() {
             active_boxes(setdiff(active_boxes(), current_id))
             touch_group()
-          }
+          },
+          session_reset = session_reset
         )
       })
 

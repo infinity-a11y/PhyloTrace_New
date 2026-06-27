@@ -39,7 +39,7 @@ render_info <- function(output) {
   message(
     format(Sys.time(), digits = 3L),
     " | ",
-    "-------------------------- Rendering '",
+    "----- Rendering '",
     output,
     "' UI"
   )

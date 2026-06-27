@@ -85,7 +85,7 @@ ui <- function(id) {
 }
 
 #' @export
-server <- function(id, external_db = shiny::reactive(NULL)) {
+server <- function(id, external_db = shiny::reactive(NULL), session_reset = shiny::reactive(0L)) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
 
@@ -99,6 +99,13 @@ server <- function(id, external_db = shiny::reactive(NULL)) {
       n <- load_trigger()
       load_trigger(if (is.null(n)) 1L else n + 1L)
     }
+
+    # Reset module state when the user returns to the startup screen.
+    # Clears the selected database path so the UI returns to its initial state.
+    observeEvent(session_reset(), {
+      Startup$db_location <- NULL
+      load_trigger(NULL)
+    }, ignoreInit = TRUE)
 
     # Observe a database location supplied from outside (e.g. a freshly
     # downloaded scheme from the scheme browser) as an alternative to the

@@ -21,8 +21,16 @@ ui <- function(id) {
 }
 
 #' @export
-server <- function(id) {
+server <- function(
+  id,
+  db_path = shiny::reactive(NULL),
+  session_reset = shiny::reactive(0L)
+) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
+
+    # Reset module state when the user returns to the startup screen.
+    # No local reactive state to clear yet; placeholder for future scheme-info UI.
+    observeEvent(session_reset(), {}, ignoreInit = TRUE)
   })
 }

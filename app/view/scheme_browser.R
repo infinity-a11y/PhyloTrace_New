@@ -206,11 +206,18 @@ ui <- function(id) {
 }
 
 #' @export
-server <- function(id) {
+server <- function(id, session_reset = shiny::reactive(0L)) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
 
     Scheme_Browser <- reactiveValues(download_status = "", last_download = NULL)
+
+    # Reset module state when the user returns to the startup screen.
+    # Clears the last download path so the "Load Database" button is disabled.
+    observeEvent(session_reset(), {
+      Scheme_Browser$download_status <- ""
+      Scheme_Browser$last_download <- NULL
+    }, ignoreInit = TRUE)
 
     # Render scheme selector
     output$scheme_selection <- renderUI({

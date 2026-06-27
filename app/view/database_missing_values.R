@@ -21,7 +21,11 @@ ui <- function(id) {
 }
 
 #' @export
-server <- function(id, session_reset = shiny::reactive(0L)) {
+server <- function(
+  id,
+  db_path = shiny::reactive(NULL),
+  session_reset = shiny::reactive(0L)
+) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
 
