@@ -75,41 +75,62 @@ ui <- function(id) {
         class = "db-page_header help-header",
         div(
           class = "db-browse-controls",
-          pickerInput(
-            ns("col_picker"),
-            label = NULL,
-            choices = OPTIONAL_COLS,
-            selected = OPTIONAL_COLS,
-            multiple = TRUE,
-            options = pickerOptions(
-              actionsBox = TRUE,
-              title = "Show columns …",
-              selectedTextFormat = "count > 3",
-              countSelectedText = "{0} / 10 columns"
+          div(
+            class = "control-group",
+            div(class = "control-group-label", "Column Selection"),
+            div(
+              class = "control-group-items",
+              pickerInput(
+                ns("col_picker"),
+                label = NULL,
+                choices = OPTIONAL_COLS,
+                selected = OPTIONAL_COLS,
+                multiple = TRUE,
+                options = pickerOptions(
+                  actionsBox = TRUE,
+                  title = "Show columns …",
+                  selectedTextFormat = "count > 3",
+                  countSelectedText = "{0} / 10 columns"
+                )
+              )
             )
           ),
-          disabled(
-            actionButton(
-              ns("discard"),
-              "Discard",
-              icon = icon("rotate-left")
+          div(
+            class = "control-group",
+            div(class = "control-group-label", "Edit"),
+            div(
+              class = "control-group-items",
+              disabled(
+                actionButton(
+                  ns("discard"),
+                  "Discard",
+                  icon = icon("rotate-left")
+                )
+              ),
+              disabled(
+                actionButton(
+                  ns("save"),
+                  "Save Changes",
+                  class = "btn-success",
+                  icon = icon("floppy-disk")
+                )
+              )
             )
           ),
-          disabled(
-            actionButton(
-              ns("save"),
-              "Save Changes",
-              class = "btn-success",
-              icon = icon("floppy-disk")
-            )
-          ),
-          uiOutput(ns("remove_picker_ui")),
-          disabled(
-            actionButton(
-              ns("remove_btn"),
-              "Remove",
-              class = "btn-danger",
-              icon = icon("trash")
+          div(
+            class = "control-group",
+            div(class = "control-group-label", "Remove isolates"),
+            div(
+              class = "control-group-items",
+              uiOutput(ns("remove_picker_ui")),
+              disabled(
+                actionButton(
+                  ns("remove_btn"),
+                  "Remove",
+                  class = "btn-danger",
+                  icon = icon("trash")
+                )
+              )
             )
           )
         )
