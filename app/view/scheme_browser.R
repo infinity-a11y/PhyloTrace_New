@@ -25,7 +25,8 @@ box::use(
     observe,
     bindEvent,
     textInput,
-    verbatimTextOutput
+    verbatimTextOutput,
+    showNotification
   ],
   shinyjs[disabled, useShinyjs, enable, disable, addClass, removeClass],
   bslib[
@@ -43,7 +44,7 @@ box::use(
     as_fillable_container,
     as_fill_carrier
   ],
-  shinyWidgets[pickerInput, show_toast],
+  shinyWidgets[pickerInput],
   DT[DTOutput, renderDT, datatable],
   waiter[autoWaiter, spin_flower, Waiter, transparent],
   fs[path_home],
@@ -428,12 +429,10 @@ server <- function(id, session_reset = shiny::reactive(0L)) {
 
       # If database already exists exit
       if (file.exists(db_location)) {
-        show_toast(
-          title = "Error",
-          text = paste(db_location, "already exists"),
+        showNotification(
+          paste(db_location, "already exists"),
           type = "error",
-          timer = 5000,
-          timerProgressBar = TRUE
+          duration = 5
         )
         return()
       }
@@ -490,12 +489,10 @@ server <- function(id, session_reset = shiny::reactive(0L)) {
       }
 
       # Return status
-      show_toast(
-        title = ifelse(status$status == 0, "Success", "Error"),
-        text = download_status,
-        type = ifelse(status$status == 0, "success", "error"),
-        timer = 5000,
-        timerProgressBar = TRUE
+      showNotification(
+        download_status,
+        type = ifelse(status$status == 0, "message", "error"),
+        duration = 5
       )
     })
 

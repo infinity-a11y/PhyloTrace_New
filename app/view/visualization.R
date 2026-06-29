@@ -852,7 +852,9 @@ ui <- function(id) {
 server <- function(
   id,
   db_path = shiny::reactive(NULL),
-  session_reset = shiny::reactive(0L)
+  session_reset = shiny::reactive(0L),
+  typing_status = shiny::reactive("idle"),
+  db_updated = shiny::reactiveVal(0L)
 ) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns

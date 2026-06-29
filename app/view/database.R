@@ -2,7 +2,7 @@
 
 box::use(
   shiny[NS, moduleServer, observeEvent, reactive],
-  bslib[page_sidebar, sidebar, navset_hidden, nav_panel],
+  bslib[page_sidebar, sidebar, navset_hidden, nav_panel, as_fill_carrier],
   shinyjs[useShinyjs, addClass, removeClass],
 )
 box::use(
@@ -62,11 +62,11 @@ ui <- function(id) {
       c(
         list(id = ns("pages")),
         lapply(db_menu, function(item) {
-          nav_panel(
+          as_fill_carrier(nav_panel(
             title = item$label,
             value = item$value,
             item$module$ui(ns(item$value))
-          )
+          ))
         })
       )
     )
@@ -77,7 +77,9 @@ ui <- function(id) {
 server <- function(
   id,
   db_path = shiny::reactive(NULL),
-  session_reset = shiny::reactive(0L)
+  session_reset = shiny::reactive(0L),
+  typing_status = shiny::reactive("idle"),
+  db_updated = shiny::reactiveVal(0L)
 ) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
@@ -99,12 +101,22 @@ server <- function(
 
     # Start each interface module's server under its own namespace and forward
     # session_reset so each sub-module can reset its own state.
+    # db_updated is passed only to browse_entries; its return value (pending)
+    # is captured and re-exposed so main.R can check for unsaved edits.
+    browse_entries_vals <- NULL
     for (item in db_menu) {
-      item$module$server(
-        item$value,
-        db_path = db_path,
-        session_reset = session_reset
+      extra <- if (identical(item$value, "browse_entries")) {
+        list(db_updated = db_updated)
+      } else {
+        list()
+      }
+      result <- do.call(
+        item$module$server,
+        c(list(item$value, db_path = db_path, session_reset = session_reset), extra)
       )
+      if (identical(item$value, "browse_entries")) {
+        browse_entries_vals <- result
+      }
     }
 
     # Each menu button switches the main field to its panel and keeps the
@@ -119,5 +131,7 @@ server <- function(
         addClass(paste0("menu_", item$value), "active")
       })
     })
+
+    list(pending = browse_entries_vals$pending)
   })
 }

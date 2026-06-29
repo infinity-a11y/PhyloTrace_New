@@ -15,7 +15,9 @@ box::use(
     tagList,
     reactive,
     reactiveVal,
-    isolate
+    isolate,
+    showNotification,
+    removeNotification,
   ],
   bslib[
     page_sidebar,
@@ -190,16 +192,55 @@ server <- function(id) {
       session_reset = session_reset
     )
 
-    database$server(
-      "database",
-      db_path = STARTUP_vals$db_path,
-      session_reset = session_reset
-    )
-    typing$server(
+    TYPING_vals <- typing$server(
       "typing",
       db_path = STARTUP_vals$db_path,
       session_reset = session_reset
     )
+
+    # ID of the most-recently shown "new isolates" notification; used to
+    # remove it programmatically when the user clicks Reload or resets.
+    db_notification_id <- NULL
+
+    DATABASE_vals <- database$server(
+      "database",
+      db_path = STARTUP_vals$db_path,
+      session_reset = session_reset,
+      typing_status = TYPING_vals$typing_status,
+      db_updated = TYPING_vals$db_updated
+    )
+
+    observeEvent(TYPING_vals$db_updated(), {
+      has_pending <- isTRUE(DATABASE_vals$pending())
+
+      db_notification_id <<- showNotification(
+        ui = tagList(
+          icon("database"), " ",
+          tags$strong("New isolates added."),
+          tags$br(),
+          "Typing wrote new entries to the database.",
+          if (has_pending) div(
+            class = "alert alert-warning p-2 mt-2 mb-1 small",
+            icon("triangle-exclamation"), " ",
+            tags$strong("Unsaved metadata edits detected."),
+            " Save or discard them in the Database Browser before reloading, or they will be lost."
+          ),
+          div(
+            class = "mt-1",
+            actionButton(
+              ns("reload_db"),
+              label = "Reload Database",
+              icon = icon("rotate"),
+              class = "btn-sm btn-primary w-100"
+            )
+          )
+        ),
+        duration = NULL,
+        closeButton = TRUE,
+        type = if (has_pending) "warning" else "message",
+        session = session
+      )
+    }, ignoreInit = TRUE)
     analysis_dashboard$server(
       "analysis_dashboard",
       db_path = STARTUP_vals$db_path,
@@ -208,12 +249,16 @@ server <- function(id) {
     visualization$server(
       "visualization",
       db_path = STARTUP_vals$db_path,
-      session_reset = session_reset
+      session_reset = session_reset,
+      typing_status = TYPING_vals$typing_status,
+      db_updated = TYPING_vals$db_updated
     )
     resistance_screening$server(
       "resistance_screening",
       db_path = STARTUP_vals$db_path,
-      session_reset = session_reset
+      session_reset = session_reset,
+      typing_status = TYPING_vals$typing_status,
+      db_updated = TYPING_vals$db_updated
     )
 
     observeEvent(STARTUP_vals$create_scheme(), {
@@ -325,7 +370,24 @@ server <- function(id) {
       session_reset(session_reset() + 1L)
     }
 
+    hide_db_notification <- function() {
+      if (!is.null(db_notification_id)) {
+        removeNotification(db_notification_id, session = session)
+        db_notification_id <<- NULL
+      }
+    }
+
+    # Reload the database: reset all module-internal state (so every module
+    # re-queries the updated DB) without removing panels or returning to the
+    # startup screen, then navigate directly to the Database Browser.
+    observeEvent(input$reload_db, {
+      hide_db_notification()
+      reset_session()
+      nav_select(id = "tabs", selected = "database_panel")
+    })
+
     observeEvent(input$reset, {
+      hide_db_notification()
       nav_show(id = "tabs", target = "startup_panel", select = TRUE)
       nav_show(id = "tabs", target = "scheme_browser_panel")
 

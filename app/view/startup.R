@@ -40,7 +40,7 @@ box::use(
 
 box::use(
   app / logic / functions[render_info],
-  app / logic / paths[stat_json],
+  app / logic / paths[stat_json, app_local_share_path],
 )
 
 #' @export
@@ -85,7 +85,11 @@ ui <- function(id) {
 }
 
 #' @export
-server <- function(id, external_db = shiny::reactive(NULL), session_reset = shiny::reactive(0L)) {
+server <- function(
+  id,
+  external_db = shiny::reactive(NULL),
+  session_reset = shiny::reactive(0L)
+) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
 
@@ -100,17 +104,20 @@ server <- function(id, external_db = shiny::reactive(NULL), session_reset = shin
       load_trigger(if (is.null(n)) 1L else n + 1L)
     }
 
-    # Reset module state when the user returns to the startup screen.
-    # Clears the selected database path so the UI returns to its initial state.
-    observeEvent(session_reset(), {
-      Startup$db_location <- NULL
-      load_trigger(NULL)
-    }, ignoreInit = TRUE)
+    # Incrementing this forces the db-location observe() to re-run after reset,
+    # even when input$db_location hasn't changed.
+    db_location_trigger <- reactiveVal(0L)
 
-    # Observe a database location supplied from outside (e.g. a freshly
-    # downloaded scheme from the scheme browser) as an alternative to the
-    # shinyFileChoose selection. When the path is valid, also auto-trigger the
-    # load so the user doesn't have to press "Load Database" manually.
+    observeEvent(
+      session_reset(),
+      {
+        load_trigger(NULL)
+        db_location_trigger(db_location_trigger() + 1L)
+      },
+      ignoreInit = TRUE
+    )
+
+    # Observe a database location
     observeEvent(external_db(), {
       db_path <- external_db()
       req(!is.null(db_path), length(db_path), is.character(db_path))
@@ -150,8 +157,14 @@ server <- function(id, external_db = shiny::reactive(NULL), session_reset = shin
       session = session
     )
 
-    # Observe current database path
+    # Observe current database path.
+    # Depends on db_location_trigger so it also re-runs after a session reset,
+    # even when input$db_location has not changed.
+    # Falls back to disk (not in-memory stat_json) so it picks up whatever
+    # main.R wrote during this session.
     observe({
+      db_location_trigger()
+
       db_location <- NULL
 
       location_input <- parseFilePaths(
@@ -160,21 +173,25 @@ server <- function(id, external_db = shiny::reactive(NULL), session_reset = shin
       )$datapath
 
       if (length(location_input)) {
-        # Case valid database input
         if (is.character(location_input) && file.exists(location_input)) {
-          # Case currently selected database is valid
           db_location <- c("Currently selected:", location_input)
         } else {
-          # Case currently selected database invalid
           db_location <- c("Currently selected:", NA)
         }
-      } else if (
-        !is.null(stat_json) &&
-          length(stat_json$last_db) &&
-          file.exists(stat_json$last_db) &&
-          endsWith(stat_json$last_db, ".db")
-      ) {
-        db_location <- c("Last used:", stat_json$last_db)
+      } else {
+        state_file <- file.path(app_local_share_path, "state.json")
+        disk_stat <- tryCatch(
+          if (file.exists(state_file)) fromJSON(state_file) else NULL,
+          error = function(e) NULL
+        )
+        if (
+          !is.null(disk_stat) &&
+            length(disk_stat$last_db) &&
+            file.exists(disk_stat$last_db) &&
+            endsWith(disk_stat$last_db, ".db")
+        ) {
+          db_location <- c("Last used:", disk_stat$last_db)
+        }
       }
 
       Startup$db_location <- db_location
@@ -250,7 +267,7 @@ server <- function(id, external_db = shiny::reactive(NULL), session_reset = shin
     })
 
     # Return values
-    reactiveValues(
+    list(
       create_scheme = shiny::reactive(input$create_new_db),
       load_database = shiny::reactive(load_trigger()),
       db_path = shiny::reactive(Startup$db_location[2])

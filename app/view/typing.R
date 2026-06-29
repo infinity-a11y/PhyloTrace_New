@@ -15,6 +15,7 @@ box::use(
     renderUI,
     uiOutput,
     renderText,
+    isolate,
     textOutput,
     verbatimTextOutput,
     div,
@@ -24,7 +25,10 @@ box::use(
     icon,
     actionButton,
     numericInput,
+    showNotification,
+    HTML
   ],
+  stats[setNames],
   bslib[
     page_sidebar,
     sidebar,
@@ -42,9 +46,18 @@ box::use(
     shinyDirChoose,
     parseDirPath,
   ],
-  shinyWidgets[progressBar, updateProgressBar, show_toast],
-  shinyjs[runjs, useShinyjs, disabled, toggleState],
-  DT[DTOutput, renderDT, datatable],
+  shinyWidgets[progressBar, updateProgressBar],
+  shinyjs[
+    runjs,
+    useShinyjs,
+    disabled,
+    toggleState,
+    disable,
+    enable,
+    addClass,
+    removeClass
+  ],
+  DT[DTOutput, renderDT, datatable, dataTableProxy, replaceData],
   fs[path_home],
 )
 box::use(
@@ -56,7 +69,6 @@ box::use(
       parse_typing_log,
       existing_strains,
       scheme_size,
-      strain_gene_counts
     ],
 )
 
@@ -377,14 +389,6 @@ server <- function(
     # Total loci in the loaded scheme (denominator of the completeness metric).
     scheme_total <- reactive(scheme_size(db_path()))
 
-    # Loci called per selected strain. Depends on Typing$refresh, which is only
-    # bumped once the background process has exited, so the database is never
-    # queried while the typing process still holds a write lock on it.
-    gene_counts <- reactive({
-      Typing$refresh
-      strain_gene_counts(db_path(), Typing$strains)
-    })
-
     # Loaded-scheme summary shown to the user (total number of loci).
     output$scheme_info <- renderUI({
       total <- scheme_total()
@@ -399,21 +403,75 @@ server <- function(
       )
     })
 
-    # Enable typing only with a valid database, at least one assembly, and no
-    # run in flight. Terminate mirrors the running state.
+    # Enable/disable controls based on current status.
+    # While running: lock file/folder pickers (needs both disable() + CSS class
+    # because shinyFiles buttons are not standard inputs) and parameter inputs.
+    # Terminate mirrors the running state; Start requires a valid ready state.
     observe({
+      running <- identical(Typing$status, "running")
       ready <- isTRUE(valid_db()) &&
         length(Typing$strains) > 0 &&
-        !identical(Typing$status, "running")
+        !running
       toggleState("start", condition = ready)
-      toggleState("terminate", condition = identical(Typing$status, "running"))
+      toggleState("terminate", condition = running)
+
+      if (running) {
+        disable("genome_file")
+        addClass("genome_file", "custom-disable")
+        disable("genome_dir")
+        addClass("genome_dir", "custom-disable")
+        disable("identity")
+        disable("coverage")
+      } else {
+        enable("genome_file")
+        removeClass("genome_file", "custom-disable")
+        enable("genome_dir")
+        removeClass("genome_dir", "custom-disable")
+        enable("identity")
+        enable("coverage")
+      }
     })
 
-    # Selection overview
+    # Builds the display data frame for the Selected Genomes table. Called by
+    # both the initial renderDT and the live replaceData observer so the column
+    # structure is always identical.
+    build_selection_df <- function(files, strains, results, existing_strains) {
+      if (!is.null(results) && nrow(results) > 0) {
+        status_map <- setNames(results$status, results$strain)
+        statuses <- status_map[strains]
+        statuses[is.na(statuses)] <- "Pending"
+      } else {
+        statuses <- ifelse(
+          strains %in% existing_strains,
+          "Already present",
+          "New"
+        )
+      }
+      data.frame(
+        File = basename(files),
+        Status = vapply(statuses, status_badge, character(1)),
+        check.names = FALSE,
+        stringsAsFactors = FALSE
+      )
+    }
+
+    # TRUE while at least one file is selected; updated only when the
+    # presence of files changes so renderDT is not re-triggered by polling.
+    selection_has_files <- reactiveVal(FALSE)
+    observe({
+      has <- length(Typing$files) > 0
+      if (!identical(has, isolate(selection_has_files()))) {
+        selection_has_files(has)
+      }
+    })
+
+    # Structural render only — fires when files appear or disappear.
+    # All data reads are wrapped in isolate() so 700 ms polling ticks don't
+    # cause a full re-render; live status updates are pushed via replaceData.
     output$selection_table <- renderDT({
       render_info("output$selection_table")
 
-      if (!length(Typing$files)) {
+      if (!selection_has_files()) {
         return(datatable(
           data.frame(" " = "No genomes selected yet.", check.names = FALSE),
           rownames = FALSE,
@@ -422,25 +480,38 @@ server <- function(
         ))
       }
 
-      present <- Typing$strains %in% existing()
-      table <- data.frame(
-        File = basename(Typing$files),
-        Strain = Typing$strains,
-        Status = vapply(
-          ifelse(present, "Already present", "New"),
-          status_badge,
-          character(1)
-        ),
-        check.names = FALSE,
-        stringsAsFactors = FALSE
-      )
-
       datatable(
-        table,
+        isolate(
+          build_selection_df(
+            Typing$files,
+            Typing$strains,
+            Typing$results,
+            existing()
+          )
+        ),
         rownames = FALSE,
         escape = FALSE,
         selection = "none",
-        options = list(dom = "tp", pageLength = 8, ordering = FALSE)
+        options = list(dom = "t", paging = FALSE, ordering = FALSE)
+      )
+    })
+
+    selection_proxy <- dataTableProxy("selection_table", session = session)
+
+    # Push status updates in-place so the accordion body's scroll position
+    # is preserved across polling ticks and post-run refreshes.
+    observe({
+      req(selection_has_files())
+      replaceData(
+        selection_proxy,
+        build_selection_df(
+          Typing$files,
+          Typing$strains,
+          Typing$results,
+          existing()
+        ),
+        resetPaging = FALSE,
+        rownames = FALSE
       )
     })
 
@@ -483,33 +554,20 @@ server <- function(
       )
     })
 
-    # Per-strain results
-    output$results_table <- renderDT({
-      render_info("output$results_table")
-
-      results <- Typing$results
-      if (is.null(results) || !nrow(results)) {
-        return(datatable(
-          data.frame(" " = "No results yet.", check.names = FALSE),
-          rownames = FALSE,
-          selection = "none",
-          options = list(dom = "t", ordering = FALSE)
-        ))
-      }
-
-      total <- scheme_total()
-      present <- gene_counts()[results$strain]
+    # Builds the display data frame for the results table. Kept as a local
+    # function so both the initial renderDT and the live replaceData observer
+    # produce identical column structure.
+    build_results_df <- function(results, total) {
       completeness <- if (!is.na(total) && total > 0) {
-        round(present / total * 100, 1)
+        round(results$found / total * 100, 1)
       } else {
         rep(NA_real_, nrow(results))
       }
-      # Completeness only makes sense for strains that are in the database.
-      completeness[!results$status %in% c("Added", "Duplicate")] <- NA_real_
+      completeness[results$status != "Added"] <- NA_real_
 
       dash <- function(x) ifelse(is.na(x), "—", as.character(x))
 
-      table <- data.frame(
+      data.frame(
         Strain = results$strain,
         Status = vapply(results$status, status_badge, character(1)),
         `Loci found` = dash(results$found),
@@ -524,13 +582,61 @@ server <- function(
         check.names = FALSE,
         stringsAsFactors = FALSE
       )
+    }
+
+    # TRUE while results exist (typing has started or has run); updated only
+    # when results transition NULL → non-NULL or back, so renderDT below is
+    # not re-triggered by the 700 ms polling updates.
+    results_initialized <- reactiveVal(FALSE)
+    observe({
+      has <- !is.null(Typing$results) && nrow(Typing$results) > 0
+      if (!identical(has, isolate(results_initialized()))) {
+        results_initialized(has)
+      }
+    })
+
+    # Per-strain results — structural render only.
+    # Fires exactly twice per typing run: once when results are first seeded
+    # (results_initialized flips TRUE) to build the correct column layout, and
+    # once on reset (flips FALSE) to show the placeholder. Live data is pushed
+    # via replaceData below, which preserves scroll position.
+    output$results_table <- renderDT({
+      render_info("output$results_table")
+
+      if (!results_initialized()) {
+        return(datatable(
+          data.frame(" " = "No results yet.", check.names = FALSE),
+          rownames = FALSE,
+          selection = "none",
+          options = list(dom = "t", ordering = FALSE)
+        ))
+      }
 
       datatable(
-        table,
+        isolate(build_results_df(Typing$results, scheme_total())),
         rownames = FALSE,
         escape = FALSE,
         selection = "none",
-        options = list(dom = "tp", pageLength = 8, ordering = FALSE)
+        options = list(
+          dom = "t",
+          paging = FALSE,
+          ordering = FALSE
+        )
+      )
+    })
+
+    results_proxy <- dataTableProxy("results_table", session = session)
+
+    # Push live data updates without a full re-render so scroll position is
+    # preserved across polling ticks.
+    observe({
+      results <- Typing$results
+      req(!is.null(results), nrow(results) > 0)
+      replaceData(
+        results_proxy,
+        build_results_df(results, scheme_total()),
+        resetPaging = FALSE,
+        rownames = FALSE
       )
     })
 
@@ -551,9 +657,7 @@ server <- function(
         return()
       }
 
-      # Click the "Typing Results" accordion button directly via Bootstrap's API
-      # rather than bslib's server-side message, which can race against the
-      # reactive flush and miss the transition.
+      # Click the "Typing Results" accordion button
       runjs(sprintf(
         "(function(){
            var acc = document.getElementById('%s');
@@ -587,11 +691,10 @@ server <- function(
 
       if (inherits(proc, "error")) {
         Typing$status <- "failed"
-        show_toast(
-          title = "Error",
-          text = paste("Could not start typing:", conditionMessage(proc)),
+        showNotification(
+          paste("Could not start typing:", conditionMessage(proc)),
           type = "error",
-          timer = 6000
+          duration = 6
         )
         return()
       }
@@ -608,11 +711,10 @@ server <- function(
         value = 0,
         total = length(Typing$strains)
       )
-      show_toast(
-        title = "Typing started",
-        text = paste(length(Typing$strains), "genome(s) queued."),
-        type = "info",
-        timer = 3000
+      showNotification(
+        paste(length(Typing$strains), "genome(s) queued."),
+        type = "message",
+        duration = 3
       )
     })
 
@@ -622,6 +724,13 @@ server <- function(
       Typing$terminated <- TRUE
       tryCatch(Typing$proc$kill(), error = function(e) NULL)
     })
+
+    # Expose the current typing status for other modules to react to.
+    typing_status <- reactive(Typing$status)
+
+    # Incremented whenever a typing run (completed or terminated) has written at
+    # least one new strain to the database
+    db_updated <- reactiveVal(0L)
 
     # Poll the background process: tail the log, refresh the results table and
     # the progress bar, and finalise once the process exits. invalidateLater
@@ -670,21 +779,32 @@ server <- function(
       added <- sum(results$status == "Added")
       duplicate <- sum(results$status == "Duplicate")
       failed <- sum(results$status %in% c("Incompatible", "Error"))
-      show_toast(
-        title = if (identical(Typing$status, "terminated")) {
-          "Typing terminated"
-        } else {
-          "Typing complete"
-        },
-        text = sprintf(
-          "%d added, %d duplicate, %d failed.",
-          added,
-          duplicate,
-          failed
-        ),
-        type = if (failed > 0) "warning" else "success",
-        timer = 6000
+
+      # Signal other modules that the DB has new data.
+      if (added > 0L) {
+        db_updated(db_updated() + 1L)
+      }
+
+      showNotification(
+        HTML(paste(
+          if (identical(Typing$status, "terminated")) {
+            "Typing terminated"
+          } else {
+            "Typing complete"
+          },
+          sprintf(
+            "%d added, %d duplicate, %d failed.",
+            added,
+            duplicate,
+            failed
+          ),
+          collapse = "<br>"
+        )),
+        type = if (failed > 0) "warning" else "message",
+        duration = 5
       )
     })
+
+    list(typing_status = typing_status, db_updated = db_updated)
   })
 }
