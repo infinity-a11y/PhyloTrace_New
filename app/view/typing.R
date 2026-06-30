@@ -263,6 +263,10 @@ server <- function(
       genome_input = NULL,
       files = character(0),
       strains = character(0),
+      # Subset of files / strains actually piped into a run: assemblies already
+      # present in the database are dropped, so only new genomes are typed.
+      queued_files = character(0),
+      queued_strains = character(0),
       proc = NULL,
       log_file = NULL,
       status = "idle",
@@ -283,6 +287,8 @@ server <- function(
         Typing$genome_input <- NULL
         Typing$files <- character(0)
         Typing$strains <- character(0)
+        Typing$queued_files <- character(0)
+        Typing$queued_strains <- character(0)
         Typing$proc <- NULL
         Typing$log_file <- NULL
         Typing$status <- "idle"
@@ -436,16 +442,16 @@ server <- function(
     # both the initial renderDT and the live replaceData observer so the column
     # structure is always identical.
     build_selection_df <- function(files, strains, results, existing_strains) {
+      is_present <- strains %in% existing_strains
       if (!is.null(results) && nrow(results) > 0) {
         status_map <- setNames(results$status, results$strain)
         statuses <- status_map[strains]
         statuses[is.na(statuses)] <- "Pending"
+        # Already-present genomes are excluded from the run, so they never
+        # appear in `results`; keep their flag rather than showing "Pending".
+        statuses[is_present] <- "Already present"
       } else {
-        statuses <- ifelse(
-          strains %in% existing_strains,
-          "Already present",
-          "New"
-        )
+        statuses <- ifelse(is_present, "Already present", "New")
       }
       data.frame(
         File = basename(files),
@@ -657,6 +663,21 @@ server <- function(
         return()
       }
 
+      # Type only assemblies that are not already in the database; their
+      # `wgMLST add` would otherwise be rejected as a duplicate, wasting time.
+      keep <- !(Typing$strains %in% existing())
+      Typing$queued_files <- Typing$files[keep]
+      Typing$queued_strains <- Typing$strains[keep]
+
+      if (length(Typing$queued_files) == 0) {
+        showNotification(
+          "All selected genomes are already present in the database.",
+          type = "warning",
+          duration = 5
+        )
+        return()
+      }
+
       # Click the "Typing Results" accordion button
       runjs(sprintf(
         "(function(){
@@ -675,12 +696,12 @@ server <- function(
       log_text("")
       Typing$terminated <- FALSE
       # Seed an all-Pending table so the queue is visible immediately.
-      Typing$results <- parse_typing_log(character(0), Typing$strains)
+      Typing$results <- parse_typing_log(character(0), Typing$queued_strains)
 
       proc <- tryCatch(
         start_typing(
           db_path = db_path(),
-          genome_input = Typing$genome_input,
+          genome_files = Typing$queued_files,
           log_file = Typing$log_file,
           identity = or_default(input$identity, 0.95),
           coverage = or_default(input$coverage, 0.9),
@@ -709,10 +730,17 @@ server <- function(
         session,
         "progress",
         value = 0,
-        total = length(Typing$strains)
+        total = length(Typing$queued_strains)
       )
+      skipped <- length(Typing$strains) - length(Typing$queued_strains)
       showNotification(
-        paste(length(Typing$strains), "genome(s) queued."),
+        paste0(
+          length(Typing$queued_strains),
+          " genome(s) queued.",
+          if (skipped > 0) {
+            sprintf(" %d already present, skipped.", skipped)
+          }
+        ),
         type = "message",
         duration = 3
       )
@@ -751,7 +779,7 @@ server <- function(
       }
       log_text(paste(lines, collapse = "\n"))
 
-      results <- parse_typing_log(lines, Typing$strains)
+      results <- parse_typing_log(lines, Typing$queued_strains)
       Typing$results <- results
       done <- sum(
         results$status %in% c("Added", "Duplicate", "Incompatible", "Error")
@@ -760,7 +788,7 @@ server <- function(
         session,
         "progress",
         value = done,
-        total = max(1L, length(Typing$strains))
+        total = max(1L, length(Typing$queued_strains))
       )
 
       if (alive) {

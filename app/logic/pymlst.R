@@ -105,23 +105,23 @@ synchronize_database <- function(database, db_path) {
 ### Assemble the loop-pymlst.sh command-line flags
 # Shared by the blocking `type_genomes()` and the non-blocking `start_typing()`
 # so the database / genome / parameter contract lives in a single place.
-# `genome_input` is either a directory (passed as -g, every assembly inside is
-# typed) or a single assembly file (passed as -f).
-typing_args <- function(db_path, genome_input, identity, coverage, env) {
+# `genome_files` is the explicit vector of assembly files to type; each is
+# passed as a positional argument (after a `--` guard so file names are never
+# mistaken for options) and typed in turn. Resolving the file list in R - rather
+# than letting the script glob a directory - lets the caller drop assemblies
+# that are already in the database before they ever reach `wgMLST add`.
+typing_args <- function(db_path, genome_files, identity, coverage, env) {
   c(
     "-d",
     basename(db_path),
-    if (dir.exists(genome_input)) {
-      c("-g", genome_input)
-    } else if (file.exists(genome_input)) {
-      c("-f", genome_input)
-    },
     "-i",
     as.character(identity),
     "-c",
     as.character(coverage),
     "-e",
-    env
+    env,
+    "--",
+    genome_files
   )
 }
 
@@ -130,19 +130,19 @@ typing_args <- function(db_path, genome_input, identity, coverage, env) {
 type_genomes <- function(
   database,
   db_path,
-  genome_input,
+  genome_files,
   script_path = "app/logic/loop-pymlst.sh",
   identity = 0.95,
   coverage = 0.9,
   env = "pymlst"
 ) {
   # Run the process. `bash <script>` avoids depending on the script's execute
-  # bit and guarantees the brace-glob in the directory branch is expanded.
+  # bit.
   typing_status <- run(
     command = "bash",
     args = c(
       normalizePath(script_path, mustWork = TRUE),
-      typing_args(db_path, genome_input, identity, coverage, env)
+      typing_args(db_path, genome_files, identity, coverage, env)
     ),
     wd = dirname(db_path),
     echo_cmd = TRUE,
@@ -210,7 +210,7 @@ type_genomes <- function(
 #' @export
 start_typing <- function(
   db_path,
-  genome_input,
+  genome_files,
   log_file,
   script_path = "app/logic/loop-pymlst.sh",
   identity = 0.95,
@@ -221,7 +221,7 @@ start_typing <- function(
     command = "bash",
     args = c(
       normalizePath(script_path, mustWork = TRUE),
-      typing_args(db_path, genome_input, identity, coverage, env)
+      typing_args(db_path, genome_files, identity, coverage, env)
     ),
     wd = dirname(db_path),
     stdout = log_file,

@@ -15,12 +15,30 @@ box::use(
   RSQLite[SQLite],
 )
 
+
+#' @export
+load_db_scheme_overview <- function(db_path) {
+  con <- dbConnect(SQLite(), db_path)
+  on.exit(dbDisconnect(con))
+
+  tables <- dbListTables(con)
+
+  if (isFALSE("scheme_overview" %in% tables)) {
+    message("Database does not contain 'scheme_overview' table")
+    return(NULL)
+  }
+
+  return(dbReadTable(con, "scheme_overview"))
+}
+
 #' @export
 make_metadata_table <- function(db_path) {
   con <- dbConnect(SQLite(), db_path)
   on.exit(dbDisconnect(con))
 
   tables <- dbListTables(con)
+
+  foo <<- tables
 
   if (isFALSE(all(c("mlst", "mlst_type", "sequences") %in% tables))) {
     message("Database does not contain expected tables")
@@ -89,7 +107,9 @@ make_metadata_table <- function(db_path) {
 
 #' @export
 remove_isolates <- function(db_path, isolates) {
-  if (!length(isolates)) return(invisible(FALSE))
+  if (!length(isolates)) {
+    return(invisible(FALSE))
+  }
 
   con <- dbConnect(SQLite(), db_path)
   on.exit(dbDisconnect(con))
@@ -104,7 +124,10 @@ remove_isolates <- function(db_path, isolates) {
       params = as.list(isolates)
     )
     # Remove sequences no longer referenced by any strain
-    dbExecute(con, "DELETE FROM sequences WHERE id NOT IN (SELECT DISTINCT seqid FROM mlst)")
+    dbExecute(
+      con,
+      "DELETE FROM sequences WHERE id NOT IN (SELECT DISTINCT seqid FROM mlst)"
+    )
   }
 
   if ("metadata" %in% tables) {

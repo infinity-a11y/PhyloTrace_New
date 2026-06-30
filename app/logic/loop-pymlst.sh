@@ -7,7 +7,7 @@ env=pymlst_env
 
 # --- Help Message ---
 usage() {
-    echo "Usage: $0 -d <database_path> [-g <genome_directory> | -f <single_file>] [-i <identity>] [-c <coverage>] [-e <conda_env>]"
+    echo "Usage: $0 -d <database_path> [-i <identity>] [-c <coverage>] [-e <conda_env>] -- <genome_file> [<genome_file> ...]"
     exit 1
 }
 
@@ -17,14 +17,14 @@ process_genome() {
     local file=$2
     local id=$3
     local cov=$4
-    
+
     # Dynamically handle extension (removes .fna, .fasta, or .fa)
     local strain_name=$(basename "$file" | sed 's/\.[^.]*$//')
 
     echo "------------------------------------------------"
     echo "Processing Strain: $strain_name"
     echo "Using Database: $db"
-    
+
     # Use conda run to ensure the environment is used correctly
     conda run -n "$env" wgMLST add "$db" "$file" \
         --strain "$strain_name" \
@@ -33,43 +33,37 @@ process_genome() {
 }
 
 # --- Parse flags ---
-while getopts "d:g:f:i:c:e:" opt; do
+while getopts "d:i:c:e:" opt; do
     case "$opt" in
         d) DB_PATH="$OPTARG" ;;
-        g) GENOME_DIR="$OPTARG" ;;
-        f) SINGLE_FILE="$OPTARG" ;;
         i) IDENTITY="$OPTARG" ;;
         c) COVERAGE="$OPTARG" ;;
         e) env="$OPTARG" ;;
         *) usage ;;
     esac
 done
+# Drop the parsed options (and the `--` guard); the genomes to type are the
+# remaining positional arguments, resolved and de-duplicated by the caller.
+shift $((OPTIND - 1))
 
 # Validation
-if [[ -z "$DB_PATH" ]] || [[ -z "$GENOME_DIR" && -z "$SINGLE_FILE" ]]; then
+if [[ -z "$DB_PATH" ]] || [[ $# -eq 0 ]]; then
     echo "Error: Missing required arguments."
     usage
 fi
 
 echo "Starting allele calling..."
 
-# Logic 1: Process single file
-if [[ -n "$SINGLE_FILE" && -f "$SINGLE_FILE" ]]; then
-    # CORRECTED ORDER: DB first, then File
-    process_genome "$DB_PATH" "$SINGLE_FILE" "$IDENTITY" "$COVERAGE"
-elif [[ -n "$SINGLE_FILE" ]]; then
-    echo "Error: File $SINGLE_FILE not found."
-fi
-
-# Logic 2: Process directory
-if [[ -n "$GENOME_DIR" && -d "$GENOME_DIR" ]]; then
-    # Look for common genome extensions
-    for genome_file in "$GENOME_DIR"/*.{fasta,fna,fa}; do
-        [ -e "$genome_file" ] || continue
+# Process each genome file handed in. The caller passes only the assemblies
+# that should actually be typed (e.g. excluding strains already in the base).
+for genome_file in "$@"; do
+    if [[ -f "$genome_file" ]]; then
         # CORRECTED ORDER: DB first, then File
         process_genome "$DB_PATH" "$genome_file" "$IDENTITY" "$COVERAGE"
-    done
-fi
+    else
+        echo "Error: File $genome_file not found."
+    fi
+done
 
 echo "------------------------------------------------"
 echo "Done!"

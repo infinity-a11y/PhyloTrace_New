@@ -28,15 +28,15 @@ box::use(
     actionButton,
   ],
   bslib[
-    page_sidebar,
     sidebar,
+    layout_sidebar,
     card,
     card_header,
     card_body,
     layout_columns,
     accordion,
     accordion_panel,
-    navset_card_tab,
+    navset_tab,
     nav_panel,
     input_switch,
     tooltip,
@@ -55,6 +55,7 @@ box::use(
       build_mst_visnetwork,
       save_mst_html,
     ],
+  app / logic / tree_plot[build_tree_ggtree, save_tree_plot],
   app / logic / database_functions[make_metadata_table],
 )
 
@@ -197,7 +198,7 @@ plot_placeholder <- function(type, generated) {
 # --- Tree (NJ / UPGMA) control tabs ------------------------------------------
 
 tree_controls <- function(ns) {
-  navset_card_tab(
+  navset_tab(
     # Labels -----------------------------------------------------------------
     nav_panel(
       "Labels",
@@ -597,7 +598,7 @@ tree_controls <- function(ns) {
 # --- MST control tabs --------------------------------------------------------
 
 mst_controls <- function(ns) {
-  navset_card_tab(
+  navset_tab(
     # Labels -----------------------------------------------------------------
     nav_panel(
       "Labels",
@@ -781,10 +782,11 @@ mst_controls <- function(ns) {
 ui <- function(id) {
   ns <- NS(id)
 
-  page_sidebar(
+  # Nested sidebars: left = plot setup, right = engine controls, plot in between.
+  layout_sidebar(
     fillable = TRUE,
-    # Enables shinyjs::click used to trigger the export download.
-    shinyjs::useShinyjs(),
+    border_radius = FALSE,
+    class = "p-0",
     sidebar = sidebar(
       id = ns("sidebar"),
       title = div(
@@ -834,22 +836,27 @@ ui <- function(id) {
         icon = icon("rotate-left")
       )
     ),
-    layout_columns(
-      col_widths = c(9, 3),
+    layout_sidebar(
+      id = "plot-sidebar",
+      border = FALSE,
+      sidebar = sidebar(
+        id = ns("controls_sidebar"),
+        position = "right",
+        width = 380,
+        open = TRUE,
+        as_fill_carrier(uiOutput(ns("controls")))
+      ),
+      shinyjs::useShinyjs(),
       card(
         full_screen = TRUE,
         class = "plot-card",
         card_body(uiOutput(ns("plot_area")))
       ),
-      # Controls swap with the engine. A fill-carrier output lets the rendered
-      # navset_card_tab stretch to the column height and scroll on overflow.
-      as_fill_carrier(uiOutput(ns("controls")))
-    ),
-    # MutationObserver: as soon as a .viz-nav-wrap mounts in the DOM (controls
-    # swap on engine change), copy each icon-only tab's text content to its
-    # title attribute so the browser shows a native hover tooltip.
-    tags$script(
-      "(function(){
+      # MutationObserver: as soon as a .viz-nav-wrap mounts in the DOM (controls
+      # swap on engine change), copy each icon-only tab's text content to its
+      # title attribute so the browser shows a native hover tooltip.
+      tags$script(
+        "(function(){
          function labelTabs(wrap){
            wrap.querySelectorAll('.nav-link').forEach(function(a){
              if(!a.title) a.title=a.textContent.trim();
@@ -866,6 +873,7 @@ ui <- function(id) {
          });
          mo.observe(document.body,{childList:true,subtree:true});
        })();"
+      )
     )
   )
 }
@@ -891,9 +899,9 @@ server <- function(
     # The computed MST igraph object for the MST engine (NULL until generated).
     mst_obj <- reactiveVal(NULL)
 
-    # Per-isolate metadata (cached until the database changes); feeds node
-    # labels and the label-source choices.
-    mst_metadata <- reactive({
+    # Per-isolate metadata (cached until the database changes); feeds both
+    # engines' labels, mappings, and metadata-backed select choices.
+    viz_metadata <- reactive({
       req(db_path())
       make_metadata_table(db_path())
     })
@@ -938,7 +946,113 @@ server <- function(
     # recomputes the (expensive) MST itself.
     mst_widget <- reactive({
       req(mst_obj())
-      build_mst_visnetwork(mst_obj(), mst_metadata(), mst_opts())
+      build_mst_visnetwork(mst_obj(), viz_metadata(), mst_opts())
+    })
+
+    # --- Tree (ggtree) state --------------------------------------------------
+
+    # Settings for the five metadata tile strips. The Mapping and Elements tabs
+    # each edit one strip (selected by nj_tile_num / nj_tile_number).
+    nj_tiles <- reactiveVal(
+      replicate(
+        5,
+        list(
+          show = FALSE,
+          variable = NULL,
+          scale = "viridis",
+          alpha = 1,
+          width = 2,
+          offset = 0.05
+        ),
+        simplify = FALSE
+      )
+    )
+
+    # Metadata columns selected for the heatmap annotation (via its modal).
+    nj_heatmap_select <- reactiveVal(character(0))
+
+    # Resolved Tree control values, shared by the live render and the export.
+    tree_opts <- reactive(
+      list(
+        # Layout / rooting.
+        root = input$nj_root_isolate,
+        layout = input$nj_layout,
+        ladderize = input$nj_ladder,
+        line_color = input$nj_color,
+        bg = input$nj_bg,
+        # Tip labels.
+        tiplab_show = input$nj_tiplab_show,
+        tiplab = input$nj_tiplab,
+        tiplab_size = input$nj_tiplab_size,
+        tiplab_alpha = input$nj_tiplab_alpha,
+        tiplab_fontface = input$nj_tiplab_fontface,
+        tiplab_position = input$nj_tiplab_position %||% 0,
+        tiplab_angle = input$nj_tiplab_angle,
+        align = input$nj_align,
+        label_panel = input$nj_geom %||% FALSE,
+        tiplab_color = input$nj_tiplab_color,
+        tiplab_fill = input$nj_tiplab_fill,
+        # Tip-label colour mapping.
+        mapping_show = input$nj_mapping_show,
+        color_mapping = input$nj_color_mapping,
+        tiplab_scale = input$nj_tiplab_scale,
+        # Branch labels.
+        branch_show = input$nj_show_branch_label,
+        branch_label = input$nj_branch_label,
+        branch_size = input$nj_branch_size,
+        branch_cutoff = input$nj_branchlabel_cutoff,
+        branch_color = input$nj_branch_color,
+        branch_label_color = input$nj_branch_label_color,
+        # Tip / node points.
+        tippoint_show = input$nj_tippoint_show,
+        tippoint_alpha = input$nj_tippoint_alpha,
+        tippoint_size = input$nj_tippoint_size,
+        tippoint_color = input$nj_tippoint_color,
+        tippoint_shape = input$nj_tippoint_shape,
+        tipcolor_mapping_show = input$nj_tipcolor_mapping_show,
+        tipcolor_mapping = input$nj_tipcolor_mapping,
+        tippoint_scale = input$nj_tippoint_scale,
+        tipshape_mapping_show = input$nj_tipshape_mapping_show,
+        tipshape_mapping = input$nj_tipshape_mapping,
+        nodepoint_show = input$nj_nodepoint_show,
+        nodepoint_alpha = input$nj_nodepoint_alpha,
+        nodepoint_color = input$nj_nodepoint_color,
+        nodepoint_shape = input$nj_nodepoint_shape,
+        nodepoint_size = input$nj_nodepoint_size,
+        # Clade highlights.
+        nodelabel_show = input$nj_nodelabel_show,
+        parentnodes = input$nj_parentnode,
+        clade_color = input$nj_clade_scale,
+        clade_type = input$nj_clade_type,
+        # Tiles / heatmap.
+        tiles = nj_tiles(),
+        heatmap_show = input$nj_heatmap_show,
+        heatmap_select = nj_heatmap_select(),
+        # Elements toggles.
+        rootedge_show = input$nj_rootedge_show,
+        treescale_show = input$nj_treescale_show,
+        # Titles.
+        title = input$nj_title,
+        subtitle = input$nj_subtitle,
+        title_color = input$nj_title_color,
+        title_size = input$nj_title_size,
+        subtitle_size = input$nj_subtitle_size,
+        # Dimensions / legend.
+        zoom = input$nj_zoom,
+        h = input$nj_h,
+        v = input$nj_v,
+        legend_orientation = input$nj_legend_orientation,
+        legend_x = input$nj_legend_x,
+        legend_y = input$nj_legend_y,
+        legend_size = input$nj_legend_size
+      )
+    )
+
+    # The ggtree plot: rebuilt live as controls change; the phylo itself is
+    # never recomputed here.
+    tree_plot_built <- reactive({
+      req(tree_obj())
+      build_tree_ggtree(tree_obj(), viz_metadata(), tree_opts())
     })
 
     observeEvent(
@@ -970,7 +1084,7 @@ server <- function(
       # Collapse the sidebar to give the freshly generated plot full width.
       # `sidebar_toggle` sends an input message, which the module session
       # namespaces itself, so pass the bare (un-namespaced) id here.
-      bslib::sidebar_toggle(id = "sidebar", open = FALSE, session = session)
+      bslib::toggle_sidebar(id = "sidebar", open = FALSE, session = session)
 
       # Both engines compute a real graphic from the loaded database: the Tree
       # engine an NJ/UPGMA phylo tree, the MST engine a minimum spanning tree.
@@ -997,6 +1111,52 @@ server <- function(
         }
 
         tree_obj(tree)
+
+        # Drive the metadata-backed selects from the real fields, populate the
+        # outgroup list with tip names, and the clade picker with node numbers.
+        fields <- names(viz_metadata())
+        keep <- function(id, choices, default) {
+          updateSelectInput(
+            session,
+            id,
+            choices = choices,
+            selected = if (isTRUE(input[[id]] %in% choices)) {
+              input[[id]]
+            } else {
+              default
+            }
+          )
+        }
+        keep("nj_tiplab", fields, "isolate")
+        keep("nj_color_mapping", fields, fields[1])
+        keep("nj_tipcolor_mapping", fields, fields[1])
+        keep("nj_tipshape_mapping", fields, fields[1])
+        keep("nj_fruit_variable", fields, fields[1])
+        keep(
+          "nj_branch_label",
+          c("Allelic Distance", fields),
+          "Allelic Distance"
+        )
+
+        tips <- tree$tip.label
+        updateSelectInput(
+          session,
+          "nj_root_isolate",
+          choices = c("Automatic", tips),
+          selected = if (isTRUE(input$nj_root_isolate %in% tips)) {
+            input$nj_root_isolate
+          } else {
+            "Automatic"
+          }
+        )
+        n_tip <- length(tips)
+        nodes <- as.character(seq.int(n_tip + 1, n_tip + tree$Nnode))
+        shinyWidgets::updatePickerInput(
+          session,
+          "nj_parentnode",
+          choices = nodes,
+          selected = intersect(input$nj_parentnode, nodes)
+        )
       } else {
         graph <- tryCatch(
           compute_mst(db_path(), input$na_handling),
@@ -1023,7 +1183,7 @@ server <- function(
 
         # Drive the label-source and variable selects from the real metadata
         # fields rather than the placeholder choices.
-        fields <- names(mst_metadata())
+        fields <- names(viz_metadata())
         updateSelectInput(
           session,
           "mst_node_label",
@@ -1081,7 +1241,12 @@ server <- function(
       ) {
         div(
           class = "viz-plot-stage",
-          plotOutput(ns("tree_plot"), height = "100%")
+          plotOutput(ns("tree_plot")),
+          # Hidden target the export action button clicks to start the download.
+          div(
+            style = "display:none;",
+            downloadButton(ns("download_nj"), "Download plot")
+          )
         )
       } else if (
         identical(type, "MST") && isTRUE(generated()) && !is.null(mst_obj())
@@ -1118,11 +1283,27 @@ server <- function(
       }
     })
 
-    output$tree_plot <- renderPlot({
-      tree <- tree_obj()
-      shiny::req(tree)
-      plot(tree, cex = 0.8, no.margin = TRUE)
-    })
+    # The ggtree plot, sized from the panel width and the aspect-ratio control
+    # (circular/inward layouts are square), rendered at print resolution.
+    output$tree_plot <- renderPlot(
+      {
+        render_info("visualization tree_plot")
+        tree_plot_built()
+      },
+      height = function() {
+        w <- session$clientData[[paste0("output_", ns("tree_plot"), "_width")]]
+        aspect <- if (
+          identical(input$nj_layout, "circular") ||
+            identical(input$nj_layout, "inward")
+        ) {
+          1
+        } else {
+          input$nj_aspect_ratio %||% 0.6
+        }
+        if (!is.null(w)) as.integer(w * aspect) else 600L
+      },
+      res = 192
+    )
 
     output$mst_plot <- renderVisNetwork({
       render_info("visualization mst_plot")
@@ -1153,6 +1334,92 @@ server <- function(
           type = "message"
         )
       }
+    })
+
+    # --- Tree tiles, heatmap, and export -------------------------------------
+
+    # Persist edits to the currently selected tile (Mapping tab → nj_tile_num).
+    observeEvent(
+      list(input$nj_tiles_show, input$nj_fruit_variable, input$nj_tiles_scale),
+      {
+        i <- as.integer(input$nj_tile_num)
+        tiles <- nj_tiles()
+        tiles[[i]]$show <- input$nj_tiles_show
+        tiles[[i]]$variable <- input$nj_fruit_variable
+        tiles[[i]]$scale <- input$nj_tiles_scale
+        nj_tiles(tiles)
+      },
+      ignoreInit = TRUE
+    )
+    # Persist edits to the currently selected tile (Elements tab → nj_tile_number).
+    observeEvent(
+      list(input$nj_fruit_alpha, input$nj_fruit_width, input$nj_fruit_offset),
+      {
+        i <- as.integer(input$nj_tile_number)
+        tiles <- nj_tiles()
+        tiles[[i]]$alpha <- input$nj_fruit_alpha
+        tiles[[i]]$width <- input$nj_fruit_width
+        tiles[[i]]$offset <- input$nj_fruit_offset
+        nj_tiles(tiles)
+      },
+      ignoreInit = TRUE
+    )
+    # Restore the stored settings into the controls when the tile selector moves.
+    observeEvent(input$nj_tile_num, {
+      tile <- nj_tiles()[[as.integer(input$nj_tile_num)]]
+      bslib::update_switch("nj_tiles_show", value = tile$show)
+      updateSelectInput(session, "nj_fruit_variable", selected = tile$variable)
+      updateSelectInput(session, "nj_tiles_scale", selected = tile$scale)
+    })
+    observeEvent(input$nj_tile_number, {
+      tile <- nj_tiles()[[as.integer(input$nj_tile_number)]]
+      shiny::updateSliderInput(session, "nj_fruit_alpha", value = tile$alpha)
+      shiny::updateSliderInput(session, "nj_fruit_width", value = tile$width)
+      shiny::updateSliderInput(session, "nj_fruit_offset", value = tile$offset)
+    })
+
+    # Heatmap column picker modal.
+    observeEvent(input$nj_heatmap_button, {
+      fields <- setdiff(names(viz_metadata()), "isolate")
+      shiny::showModal(shiny::modalDialog(
+        title = "Heatmap variables",
+        shiny::checkboxGroupInput(
+          ns("nj_heatmap_cols"),
+          NULL,
+          choices = fields,
+          selected = nj_heatmap_select()
+        ),
+        footer = shiny::tagList(
+          shiny::modalButton("Cancel"),
+          actionButton(ns("nj_heatmap_apply"), "Apply")
+        ),
+        easyClose = TRUE
+      ))
+    })
+    observeEvent(input$nj_heatmap_apply, {
+      nj_heatmap_select(input$nj_heatmap_cols %||% character(0))
+      shiny::removeModal()
+    })
+
+    # Render the current tree to a file at the configured aspect ratio.
+    output$download_nj <- downloadHandler(
+      filename = function() {
+        paste0(Sys.Date(), "_tree.", input$nj_filetype)
+      },
+      content = function(file) {
+        aspect <- if (
+          identical(input$nj_layout, "circular") ||
+            identical(input$nj_layout, "inward")
+        ) {
+          1
+        } else {
+          input$nj_aspect_ratio %||% 0.6
+        }
+        save_tree_plot(tree_plot_built(), file, input$nj_filetype, aspect)
+      }
+    )
+    observeEvent(input$nj_download, {
+      shinyjs::click(ns("download_nj"))
     })
 
     # Keep all rendered outputs reactive while the visualization panel is absent

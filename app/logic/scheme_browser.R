@@ -8,6 +8,8 @@ box::use(
   jsonlite[fromJSON],
   shinyFiles[parseDirPath],
   fs[path_home],
+  DBI[dbConnect, dbDisconnect, dbWriteTable],
+  RSQLite[SQLite]
 )
 
 box::use(
@@ -85,6 +87,22 @@ get_species_details <- function(species_select) {
 }
 
 #' @export
+download_scheme_overview <- function(scheme_overview, db_path) {
+  con <- dbConnect(SQLite(), db_path)
+  on.exit(dbDisconnect(con))
+
+  names(scheme_overview) <- c("key", "value")
+
+  dbWriteTable(
+    con,
+    "scheme_overview",
+    scheme_overview,
+    overwrite = TRUE
+  )
+  invisible(TRUE)
+}
+
+#' @export
 get_scheme_overview <- function(
   select_cgmlst
 ) {
@@ -122,7 +140,9 @@ get_scheme_overview <- function(
     names(scheme_overview) <- c("X1", "X2")
 
     # Drop fields that aren't relevant to the scheme overview
-    scheme_overview <- scheme_overview[scheme_overview$X1 != "Accessory Scheme", ]
+    scheme_overview <- scheme_overview[
+      scheme_overview$X1 != "Accessory Scheme",
+    ]
 
     scheme_overview <- add_row(
       scheme_overview,

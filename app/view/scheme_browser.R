@@ -58,6 +58,7 @@ box::use(
   app /
     logic /
     scheme_browser[
+      download_scheme_overview,
       get_scheme_overview,
       get_species_img,
       get_species_details,
@@ -215,10 +216,14 @@ server <- function(id, session_reset = shiny::reactive(0L)) {
 
     # Reset module state when the user returns to the startup screen.
     # Clears the last download path so the "Load Database" button is disabled.
-    observeEvent(session_reset(), {
-      Scheme_Browser$download_status <- ""
-      Scheme_Browser$last_download <- NULL
-    }, ignoreInit = TRUE)
+    observeEvent(
+      session_reset(),
+      {
+        Scheme_Browser$download_status <- ""
+        Scheme_Browser$last_download <- NULL
+      },
+      ignoreInit = TRUE
+    )
 
     # Render scheme selector
     output$scheme_selection <- renderUI({
@@ -472,6 +477,10 @@ server <- function(id, session_reset = shiny::reactive(0L)) {
           "failed"
         )
       } else if (status$status == 0) {
+        if (!is.null(scheme_overview())) {
+          download_scheme_overview(scheme_overview(), db_location)
+        }
+
         # Case download has exit status 0
         download_status <- paste(
           "Download of",
