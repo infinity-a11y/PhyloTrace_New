@@ -8,7 +8,14 @@ box::use(
     outputOptions,
     renderUI,
     uiOutput,
+    renderPlot,
+    plotOutput,
+    reactive,
     reactiveVal,
+    req,
+    updateSelectInput,
+    downloadHandler,
+    downloadButton,
     div,
     p,
     tags,
@@ -36,9 +43,19 @@ box::use(
     as_fill_carrier,
   ],
   shinyWidgets[radioGroupButtons, prettyRadioButtons, colorPickr, pickerInput],
+  visNetwork[visNetworkOutput, renderVisNetwork],
 )
 box::use(
   app / logic / functions[render_info],
+  app /
+    logic /
+    phylo[
+      compute_phylo_tree,
+      compute_mst,
+      build_mst_visnetwork,
+      save_mst_html,
+    ],
+  app / logic / database_functions[make_metadata_table],
 )
 
 # --- shared option sets (placeholders; populated from the database in backend) -
@@ -699,7 +716,8 @@ mst_controls <- function(ns) {
                 Dot = "dot",
                 Square = "square"
               )
-            )
+            ),
+            selected = "dot"
           )
         ),
         accordion_panel(
@@ -765,7 +783,10 @@ ui <- function(id) {
 
   page_sidebar(
     fillable = TRUE,
+    # Enables shinyjs::click used to trigger the export download.
+    shinyjs::useShinyjs(),
     sidebar = sidebar(
+      id = ns("sidebar"),
       title = div(
         class = "viz-sidebar-title",
         div(class = "sidebar-title", "Visualization"),
@@ -814,9 +835,10 @@ ui <- function(id) {
       )
     ),
     layout_columns(
-      col_widths = c(8, 4),
+      col_widths = c(9, 3),
       card(
         full_screen = TRUE,
+        class = "plot-card",
         card_body(uiOutput(ns("plot_area")))
       ),
       # Controls swap with the engine. A fill-carrier output lets the rendered
@@ -863,6 +885,62 @@ server <- function(
     # preview between its prompt and the (placeholder) rendered image.
     generated <- reactiveVal(FALSE)
 
+    # The computed phylo tree for the Tree engine (NULL until generated).
+    tree_obj <- reactiveVal(NULL)
+
+    # The computed MST igraph object for the MST engine (NULL until generated).
+    mst_obj <- reactiveVal(NULL)
+
+    # Per-isolate metadata (cached until the database changes); feeds node
+    # labels and the label-source choices.
+    mst_metadata <- reactive({
+      req(db_path())
+      make_metadata_table(db_path())
+    })
+
+    # Resolved MST control values, gathered once so the live render and the
+    # HTML export share an identical configuration.
+    mst_opts <- reactive(
+      list(
+        show_label = input$mst_show_label,
+        field = input$mst_node_label,
+        node_font_color = input$mst_text_color,
+        node_font_size = input$mst_node_label_fontsize,
+        node_color = input$mst_color_node,
+        node_size = input$mst_node_size,
+        scale_nodes = input$mst_scale_nodes,
+        shape = input$mst_node_shape,
+        shadow = input$mst_shadow,
+        edge_color = input$mst_color_edge,
+        edge_font_color = input$mst_edge_font_color,
+        edge_font_size = input$mst_edge_font_size,
+        scale_edges = input$mst_scale_edges,
+        edge_length_scale = input$mst_edge_length_scale,
+        background = input$mst_background_color,
+        transparent = input$mst_background_transparent,
+        # Variable pie-chart colouring + legend.
+        color_var = input$mst_color_var,
+        col_var = input$mst_col_var,
+        col_scale = input$mst_col_scale,
+        legend_ori = input$mst_legend_ori,
+        legend_font_size = input$mst_font_size,
+        legend_symbol_size = input$mst_symbol_size,
+        # Clustering.
+        show_clusters = input$mst_show_clusters,
+        cluster_threshold = input$mst_cluster_threshold,
+        cluster_col_scale = input$mst_cluster_col_scale,
+        cluster_type = input$mst_cluster_type,
+        cluster_width = input$mst_cluster_width
+      )
+    )
+
+    # The visNetwork widget: rebuilt live as controls change, but never
+    # recomputes the (expensive) MST itself.
+    mst_widget <- reactive({
+      req(mst_obj())
+      build_mst_visnetwork(mst_obj(), mst_metadata(), mst_opts())
+    })
+
     observeEvent(
       session_reset(),
       {
@@ -889,6 +967,90 @@ server <- function(
     })
 
     observeEvent(input$generate, {
+      # Collapse the sidebar to give the freshly generated plot full width.
+      # `sidebar_toggle` sends an input message, which the module session
+      # namespaces itself, so pass the bare (un-namespaced) id here.
+      bslib::sidebar_toggle(id = "sidebar", open = FALSE, session = session)
+
+      # Both engines compute a real graphic from the loaded database: the Tree
+      # engine an NJ/UPGMA phylo tree, the MST engine a minimum spanning tree.
+      if (identical(input$plot_type, "Tree")) {
+        tree <- tryCatch(
+          compute_phylo_tree(db_path(), input$na_handling, input$algo),
+          error = function(e) {
+            shiny::showNotification(
+              paste("Tree computation failed:", conditionMessage(e)),
+              type = "error"
+            )
+            NULL
+          }
+        )
+
+        if (is.null(tree)) {
+          shiny::showNotification(
+            "Could not build a tree: need at least 3 isolates in the database.",
+            type = "warning"
+          )
+          tree_obj(NULL)
+          generated(FALSE)
+          return()
+        }
+
+        tree_obj(tree)
+      } else {
+        graph <- tryCatch(
+          compute_mst(db_path(), input$na_handling),
+          error = function(e) {
+            shiny::showNotification(
+              paste("MST computation failed:", conditionMessage(e)),
+              type = "error"
+            )
+            NULL
+          }
+        )
+
+        if (is.null(graph)) {
+          shiny::showNotification(
+            "Could not build an MST: need at least 2 isolates in the database.",
+            type = "warning"
+          )
+          mst_obj(NULL)
+          generated(FALSE)
+          return()
+        }
+
+        mst_obj(graph)
+
+        # Drive the label-source and variable selects from the real metadata
+        # fields rather than the placeholder choices.
+        fields <- names(mst_metadata())
+        updateSelectInput(
+          session,
+          "mst_node_label",
+          choices = fields,
+          selected = if (isTRUE(input$mst_node_label %in% fields)) {
+            input$mst_node_label
+          } else {
+            "isolate"
+          }
+        )
+        # Default the colour variable to the first non-isolate field, where one
+        # exists, so a freshly enabled mapping is meaningful.
+        non_isolate <- setdiff(fields, "isolate")
+        updateSelectInput(
+          session,
+          "mst_col_var",
+          choices = fields,
+          selected = if (isTRUE(input$mst_col_var %in% fields)) {
+            input$mst_col_var
+          } else if (length(non_isolate)) {
+            non_isolate[1]
+          } else {
+            fields[1]
+          }
+        )
+      }
+
       generated(TRUE)
     })
 
@@ -912,7 +1074,85 @@ server <- function(
     output$plot_area <- renderUI({
       render_info("visualization plot_area")
       type <- if (is.null(input$plot_type)) "MST" else input$plot_type
-      plot_placeholder(type, generated())
+      # Once generated, each engine renders its live plot; before that (or on a
+      # failed build) the placeholder/prompt is shown.
+      if (
+        identical(type, "Tree") && isTRUE(generated()) && !is.null(tree_obj())
+      ) {
+        div(
+          class = "viz-plot-stage",
+          plotOutput(ns("tree_plot"), height = "100%")
+        )
+      } else if (
+        identical(type, "MST") && isTRUE(generated()) && !is.null(mst_obj())
+      ) {
+        # Canvas width derives from the panel height and the aspect-ratio
+        # control; the height is only known after a first render, so fall back
+        # until the browser reports it.
+        aspect <- if (is.null(input$mst_aspect_ratio)) {
+          0.6
+        } else {
+          input$mst_aspect_ratio
+        }
+        h <- session$clientData[[paste0("output_", ns("mst_plot"), "_height")]]
+        width <- if (!is.null(h)) {
+          as.integer(h * (1 / aspect))
+        } else {
+          as.integer(500 * aspect)
+        }
+        div(
+          class = "viz-plot-stage",
+          visNetworkOutput(
+            ns("mst_plot"),
+            height = "100%",
+            width = paste0(width, "px")
+          ),
+          # Hidden target the export action button clicks to start the download.
+          div(
+            style = "display:none;",
+            downloadButton(ns("mst_html"), "Download HTML")
+          )
+        )
+      } else {
+        plot_placeholder(type, generated())
+      }
+    })
+
+    output$tree_plot <- renderPlot({
+      tree <- tree_obj()
+      shiny::req(tree)
+      plot(tree, cex = 0.8, no.margin = TRUE)
+    })
+
+    output$mst_plot <- renderVisNetwork({
+      render_info("visualization mst_plot")
+      mst_widget()
+    })
+
+    # Serialise the current MST as a self-contained HTML file.
+    output$mst_html <- downloadHandler(
+      filename = function() paste0(Sys.Date(), "_MST.html"),
+      content = function(file) {
+        bg <- if (isTRUE(input$mst_background_transparent)) {
+          "rgba(0,0,0,0)"
+        } else {
+          input$mst_background_color
+        }
+        save_mst_html(mst_widget(), file, bg)
+      }
+    )
+
+    # The export tab uses an action button; route it to the hidden download
+    # link. Only HTML export is wired for now.
+    observeEvent(input$mst_download, {
+      if (identical(input$mst_filetype, "html")) {
+        shinyjs::click(ns("mst_html"))
+      } else {
+        shiny::showNotification(
+          "Only HTML export is available currently.",
+          type = "message"
+        )
+      }
     })
 
     # Keep all rendered outputs reactive while the visualization panel is absent
@@ -921,5 +1161,7 @@ server <- function(
     outputOptions(output, "algo_ui", suspendWhenHidden = FALSE)
     outputOptions(output, "controls", suspendWhenHidden = FALSE)
     outputOptions(output, "plot_area", suspendWhenHidden = FALSE)
+    outputOptions(output, "tree_plot", suspendWhenHidden = FALSE)
+    outputOptions(output, "mst_plot", suspendWhenHidden = FALSE)
   })
 }
