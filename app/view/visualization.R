@@ -5,6 +5,7 @@ box::use(
     NS,
     moduleServer,
     observeEvent,
+    eventReactive,
     outputOptions,
     renderUI,
     uiOutput,
@@ -628,12 +629,12 @@ mst_controls <- function(ns) {
         viz_color(ns, "mst_color_node", "Nodes", "#B2FACA"),
         viz_color(ns, "mst_color_edge", "Edges", "#000000"),
         viz_color(ns, "mst_edge_font_color", "Edge Font", "#000000"),
-        viz_color(ns, "mst_background_color", "Background", "#ffffff")
-      ),
-      input_switch(
-        ns("mst_background_transparent"),
-        "Transparent background",
-        FALSE
+        viz_color(ns, "mst_background_color", "Background", "#ffffff"),
+        input_switch(
+          ns("mst_background_transparent"),
+          "Transparent background",
+          FALSE
+        )
       )
     ),
     # Sizing -----------------------------------------------------------------
@@ -841,12 +842,48 @@ ui <- function(id) {
       border = FALSE,
       sidebar = sidebar(
         id = ns("controls_sidebar"),
+        class = "viz-controls-sidebar",
         position = "right",
         width = 380,
         open = TRUE,
+        fillable = TRUE,
         as_fill_carrier(uiOutput(ns("controls")))
       ),
       shinyjs::useShinyjs(),
+      # Loads waiter.js so the flower spinner used in the loading overlay is styled.
+      waiter::useWaiter(),
+      # Loading overlay: shown the moment Generate is clicked, hidden once the
+      # plot is actually visible. The Tree (renderPlot) is done at its value
+      # event; the MST (visNetwork) keeps running a client-side physics layout
+      # after its value arrives, so it is cleared by the network's stabilization
+      # event (see build_mst_visnetwork). A timeout is a safety net.
+      tags$script(
+        shiny::HTML(
+          paste0(
+            "(function(){",
+            "var gen='",
+            ns("generate"),
+            "';var tree='",
+            ns("tree_plot"),
+            "';var mst='",
+            ns("mst_plot"),
+            "';var timer;",
+            "function set(on){document.querySelectorAll('.viz-plot-stage')",
+            ".forEach(function(s){s.classList.toggle('is-loading',on);});",
+            "if(on){document.querySelectorAll('.viz-plot-prompt')",
+            ".forEach(function(p){p.style.display='none';});",
+            "clearTimeout(timer);timer=setTimeout(function(){set(false);},45000);}",
+            "else{clearTimeout(timer);}}",
+            "$(document).on('click','#'+gen.replace(/([:.])/g,'\\\\$1'),",
+            "function(){set(true);});",
+            "$(document).on('shiny:value shiny:recalculated',",
+            "function(e){if(e.target.id===tree)set(false);});",
+            "$(document).on('shiny:error',",
+            "function(e){if(e.target.id===tree||e.target.id===mst)set(false);});",
+            "})();"
+          )
+        )
+      ),
       card(
         full_screen = TRUE,
         class = "plot-card",
@@ -893,11 +930,54 @@ server <- function(
     # preview between its prompt and the (placeholder) rendered image.
     generated <- reactiveVal(FALSE)
 
-    # The computed phylo tree for the Tree engine (NULL until generated).
-    tree_obj <- reactiveVal(NULL)
+    # The computed phylo tree / MST graph. These compute on Generate but only
+    # when actually read by their (visible) output, so the work happens during
+    # output rendering where the waiter spinner can cover it.
+    tree_obj <- eventReactive(input$generate, {
+      if (!identical(input$plot_type, "Tree")) {
+        return(NULL)
+      }
+      tree <- tryCatch(
+        compute_phylo_tree(db_path(), input$na_handling, input$algo),
+        error = function(e) {
+          shiny::showNotification(
+            paste("Tree computation failed:", conditionMessage(e)),
+            type = "error"
+          )
+          NULL
+        }
+      )
+      if (is.null(tree)) {
+        shiny::showNotification(
+          "Could not build a tree: need at least 3 isolates in the database.",
+          type = "warning"
+        )
+      }
+      tree
+    })
 
-    # The computed MST igraph object for the MST engine (NULL until generated).
-    mst_obj <- reactiveVal(NULL)
+    mst_obj <- eventReactive(input$generate, {
+      if (!identical(input$plot_type, "MST")) {
+        return(NULL)
+      }
+      graph <- tryCatch(
+        compute_mst(db_path(), input$na_handling),
+        error = function(e) {
+          shiny::showNotification(
+            paste("MST computation failed:", conditionMessage(e)),
+            type = "error"
+          )
+          NULL
+        }
+      )
+      if (is.null(graph)) {
+        shiny::showNotification(
+          "Could not build an MST: need at least 2 isolates in the database.",
+          type = "warning"
+        )
+      }
+      graph
+    })
 
     # Per-isolate metadata (cached until the database changes); feeds both
     # engines' labels, mappings, and metadata-backed select choices.
@@ -1082,39 +1162,15 @@ server <- function(
 
     observeEvent(input$generate, {
       # Collapse the sidebar to give the freshly generated plot full width.
-      # `sidebar_toggle` sends an input message, which the module session
+      # `toggle_sidebar` sends an input message, which the module session
       # namespaces itself, so pass the bare (un-namespaced) id here.
       bslib::toggle_sidebar(id = "sidebar", open = FALSE, session = session)
 
-      # Both engines compute a real graphic from the loaded database: the Tree
-      # engine an NJ/UPGMA phylo tree, the MST engine a minimum spanning tree.
+      # Populate the metadata-backed selects (no heavy compute here; the tree /
+      # MST is computed lazily by its output so the waiter can cover it).
+      fields <- names(viz_metadata())
+
       if (identical(input$plot_type, "Tree")) {
-        tree <- tryCatch(
-          compute_phylo_tree(db_path(), input$na_handling, input$algo),
-          error = function(e) {
-            shiny::showNotification(
-              paste("Tree computation failed:", conditionMessage(e)),
-              type = "error"
-            )
-            NULL
-          }
-        )
-
-        if (is.null(tree)) {
-          shiny::showNotification(
-            "Could not build a tree: need at least 3 isolates in the database.",
-            type = "warning"
-          )
-          tree_obj(NULL)
-          generated(FALSE)
-          return()
-        }
-
-        tree_obj(tree)
-
-        # Drive the metadata-backed selects from the real fields, populate the
-        # outgroup list with tip names, and the clade picker with node numbers.
-        fields <- names(viz_metadata())
         keep <- function(id, choices, default) {
           updateSelectInput(
             session,
@@ -1138,7 +1194,11 @@ server <- function(
           "Allelic Distance"
         )
 
-        tips <- tree$tip.label
+        # Outgroup + clade node choices are derived from the isolate set without
+        # computing the tree (tips = isolates; internal node count follows from
+        # the algorithm), keeping this observer cheap.
+        tips <- viz_metadata()$isolate
+        n_tip <- length(tips)
         updateSelectInput(
           session,
           "nj_root_isolate",
@@ -1149,41 +1209,17 @@ server <- function(
             "Automatic"
           }
         )
-        n_tip <- length(tips)
-        nodes <- as.character(seq.int(n_tip + 1, n_tip + tree$Nnode))
-        shinyWidgets::updatePickerInput(
-          session,
-          "nj_parentnode",
-          choices = nodes,
-          selected = intersect(input$nj_parentnode, nodes)
-        )
-      } else {
-        graph <- tryCatch(
-          compute_mst(db_path(), input$na_handling),
-          error = function(e) {
-            shiny::showNotification(
-              paste("MST computation failed:", conditionMessage(e)),
-              type = "error"
-            )
-            NULL
-          }
-        )
-
-        if (is.null(graph)) {
-          shiny::showNotification(
-            "Could not build an MST: need at least 2 isolates in the database.",
-            type = "warning"
+        if (n_tip >= 3) {
+          n_node <- if (identical(input$algo, "UPGMA")) n_tip - 1L else n_tip - 2L
+          nodes <- as.character(seq.int(n_tip + 1L, n_tip + n_node))
+          shinyWidgets::updatePickerInput(
+            session,
+            "nj_parentnode",
+            choices = nodes,
+            selected = intersect(input$nj_parentnode, nodes)
           )
-          mst_obj(NULL)
-          generated(FALSE)
-          return()
         }
-
-        mst_obj(graph)
-
-        # Drive the label-source and variable selects from the real metadata
-        # fields rather than the placeholder choices.
-        fields <- names(viz_metadata())
+      } else {
         updateSelectInput(
           session,
           "mst_node_label",
@@ -1231,16 +1267,46 @@ server <- function(
       )
     })
 
+    # The plot output element is kept mounted (it depends on the engine, not on
+    # `generated`) so that each Generate re-renders the *same* output — that is
+    # what fires the recalculating event the waiter hooks. The "press Generate"
+    # prompt is an overlay toggled separately, without recreating the output.
     output$plot_area <- renderUI({
       render_info("visualization plot_area")
       type <- if (is.null(input$plot_type)) "MST" else input$plot_type
-      # Once generated, each engine renders its live plot; before that (or on a
-      # failed build) the placeholder/prompt is shown.
-      if (
-        identical(type, "Tree") && isTRUE(generated()) && !is.null(tree_obj())
-      ) {
+      prompt <- div(
+        id = ns("viz_prompt"),
+        class = "viz-plot-prompt",
+        style = if (isTRUE(shiny::isolate(generated()))) "display:none;" else NULL,
+        icon(
+          if (type == "MST") "circle-nodes" else "diagram-project",
+          class = "viz-plot-icon"
+        ),
+        p(
+          "Configure the ",
+          type,
+          " options, then press ",
+          tags$strong("Generate Plot"),
+          "."
+        )
+      )
+
+      # Loading overlay, shown/hidden client-side via the `.is-loading` class.
+      # Uses the same flower spinner as the scheme browser's waiter.
+      loading <- div(
+        class = "viz-loading",
+        div(
+          class = "spinner-custom",
+          waiter::spin_flower(),
+          tags$h5("Generating plot …", class = "viz-loading_text")
+        )
+      )
+
+      if (identical(type, "Tree")) {
         div(
           class = "viz-plot-stage",
+          prompt,
+          loading,
           plotOutput(ns("tree_plot")),
           # Hidden target the export action button clicks to start the download.
           div(
@@ -1248,9 +1314,7 @@ server <- function(
             downloadButton(ns("download_nj"), "Download plot")
           )
         )
-      } else if (
-        identical(type, "MST") && isTRUE(generated()) && !is.null(mst_obj())
-      ) {
+      } else {
         # Canvas width derives from the panel height and the aspect-ratio
         # control; the height is only known after a first render, so fall back
         # until the browser reports it.
@@ -1267,6 +1331,8 @@ server <- function(
         }
         div(
           class = "viz-plot-stage",
+          prompt,
+          loading,
           visNetworkOutput(
             ns("mst_plot"),
             height = "100%",
@@ -1278,10 +1344,18 @@ server <- function(
             downloadButton(ns("mst_html"), "Download HTML")
           )
         )
-      } else {
-        plot_placeholder(type, generated())
       }
     })
+
+    # Hide the prompt overlay once a plot has been generated; show it again when
+    # the engine switch resets `generated`.
+    observeEvent(
+      generated(),
+      {
+        shinyjs::toggle(id = "viz_prompt", condition = !isTRUE(generated()))
+      },
+      ignoreNULL = FALSE
+    )
 
     # The ggtree plot, sized from the panel width and the aspect-ratio control
     # (circular/inward layouts are square), rendered at print resolution.
@@ -1327,7 +1401,7 @@ server <- function(
     # link. Only HTML export is wired for now.
     observeEvent(input$mst_download, {
       if (identical(input$mst_filetype, "html")) {
-        shinyjs::click(ns("mst_html"))
+        shinyjs::click("mst_html")
       } else {
         shiny::showNotification(
           "Only HTML export is available currently.",
@@ -1419,7 +1493,7 @@ server <- function(
       }
     )
     observeEvent(input$nj_download, {
-      shinyjs::click(ns("download_nj"))
+      shinyjs::click("download_nj")
     })
 
     # Keep all rendered outputs reactive while the visualization panel is absent

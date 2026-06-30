@@ -129,6 +129,26 @@
     padding: 0.75rem 0;
 }
 
+// Right controls sidebar: fill the full available height at any display ratio,
+// so the tab panel scrolls internally and open dropdowns are not clipped.
+.viz-controls-sidebar,
+.viz-controls-sidebar>.sidebar-content {
+    height: 100%;
+    min-height: 0;
+}
+
+// Waiter overlay shown while a plot (re)renders (dark backdrop, light text).
+.viz-waiter {
+    text-align: center;
+    color: #f0f0f0;
+}
+
+.viz-waiter_text {
+    margin-top: 0.75rem;
+    color: #f0f0f0;
+    font-weight: 500;
+}
+
 .viz-sidebar-title {
     display: flex;
     align-items: start;
@@ -183,12 +203,50 @@
 
 // Generated preview: contain the example image within the card.
 .viz-plot-stage {
+    position: relative;
     display: flex;
     align-items: center;
     justify-content: center;
     height: 100%;
     background-image: linear-gradient(45deg, #d1d9df69 25%, transparent 25%, transparent 50%, #d1d9df69 50%, #d1d9df69 75%, transparent 75%);
     background-size: 5px 5px;
+}
+
+// "Press Generate" prompt overlaid on the (mounted but empty) plot output.
+.viz-plot-prompt {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    color: #6c7a89;
+    text-align: center;
+}
+
+// Loading overlay shown while a plot is generated (toggled by `.is-loading`).
+.viz-loading {
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1.25rem;
+    background: rgba(51, 62, 72, 0.71);
+    color: #f0f0f0;
+}
+
+.viz-plot-stage.is-loading .viz-loading {
+    display: flex;
+}
+
+.viz-loading_text {
+    font-weight: 500;
+    color: #f0f0f0;
 }
 
 .viz-plot-img {
@@ -695,6 +753,101 @@
     margin: 0 0 0 1.5rem;
 }
 
+.visNetwork {
+    border: 1px solid black;
+}
+
+// Scheme Info layout: metadata card fills the row, the species aside holds a
+// fixed (photo) width on the right. `as_fill_carrier` adds .html-fill-container
+// which forces flex-direction: column, so the row direction and child flex
+// sizing are overridden here at matching/higher specificity.
+.scheme-info-layout {
+    gap: var(--bs-gutter-x, 1.5rem);
+    height: 100%;
+    min-height: 0;
+}
+
+.scheme-info-layout.html-fill-container {
+    flex-direction: row;
+}
+
+.scheme-info-layout>.scheme-info-main {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+// Species photo + Details card stack. A fixed (non-shrinking) width keeps the
+// photo at a sensible size (source images are 300px tall, widths vary) and
+// makes the Details card below line up to exactly the same width as the image.
+// flex-shrink must stay 0 — otherwise a wide metadata table (e.g. a long
+// unbreakable scheme URL) steals width and collapses the photo/Details.
+.scheme-info-layout>.scheme-aside {
+    flex: 0 0 400px;
+    width: 400px;
+}
+
+// Species photo presented as a rounded "hero" with an overlaid name caption.
+// Used by the Database > Scheme Info panel where the image sits above the
+// Details card rather than floating inside it.
+.species-photo {
+    position: relative;
+    width: 100%;
+    margin-bottom: var(--bslib-spacer, 1rem);
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.18);
+}
+
+.species-photo .shiny-image-output {
+    width: 100% !important;
+    height: fit-content !important;
+    line-height: 0;
+}
+
+.species-photo img {
+    display: block;
+    width: 100%;
+    // Fill the block width; height follows to keep the source aspect ratio.
+    // max-height + object-fit only bite for unusually narrow sources (which
+    // would otherwise render very tall at the fixed width), cropping just those.
+    height: auto;
+    max-height: 320px;
+    object-fit: cover;
+}
+
+// Rank + NCBI badges anchored to the top-right corner so they keep clear of
+// the species name and never wrap onto a second row when the photo narrows.
+.species-photo_badges {
+    position: absolute;
+    top: 0.6rem;
+    right: 0.6rem;
+    z-index: 1;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 0.4rem;
+    max-width: calc(100% - 1.2rem);
+}
+
+.species-photo_caption {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    align-items: center;
+    padding: 1.75rem 1rem 0.85rem;
+    background: linear-gradient(to top, rgba(0, 0, 0, 0.78), rgba(0, 0, 0, 0));
+}
+
+.species-photo_name {
+    color: #fff;
+    font-size: 1.3rem;
+    font-weight: 600;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+}
+
 .species-details_empty {
     color: #6c7a89;
     font-style: italic;
@@ -725,7 +878,8 @@
     color: #2da700;
     background: #f1f4f8;
     padding: 0 0.5rem;
-    border-radius: 10px;
+    border-radius: 6px;
+    border: 1px dashed;
 }
 
 .species-details_taxid {
@@ -740,6 +894,7 @@
     padding: 0 0.5rem;
     border-radius: 6px;
     white-space: nowrap;
+    border: 1px dashed;
 }
 
 .species-details_lineage {

@@ -59,6 +59,7 @@ box::use(
     logic /
     scheme_browser[
       download_scheme_overview,
+      download_scheme_targets,
       get_scheme_overview,
       get_species_img,
       get_species_details,
@@ -480,6 +481,11 @@ server <- function(id, session_reset = shiny::reactive(0L)) {
         if (!is.null(scheme_overview())) {
           download_scheme_overview(scheme_overview(), db_location)
         }
+
+        # Store the scheme's target/locus table from cgmlst.org as a `targets`
+        # table. Self-contained and non-fatal: a fetch failure leaves the
+        # database otherwise intact.
+        download_scheme_targets(input$scheme_selector, db_location)
 
         # Case download has exit status 0
         download_status <- paste(

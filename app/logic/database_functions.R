@@ -31,6 +31,33 @@ load_db_scheme_overview <- function(db_path) {
   return(dbReadTable(con, "scheme_overview"))
 }
 
+#' Read the organism/species name stored in the database's `mlst_type` table.
+#'
+#' This is the authoritative species of the loaded scheme (written at typing
+#' time) and is more robust than parsing it out of the scheme overview. Returns
+#' a single species string, or NULL when the table or value is absent.
+#' @export
+load_db_species <- function(db_path) {
+  con <- dbConnect(SQLite(), db_path)
+  on.exit(dbDisconnect(con))
+
+  tables <- dbListTables(con)
+
+  if (isFALSE("mlst_type" %in% tables)) {
+    message("Database does not contain 'mlst_type' table")
+    return(NULL)
+  }
+
+  species <- dbReadTable(con, "mlst_type")$species
+  species <- species[!is.na(species) & nzchar(species)]
+
+  if (!length(species)) {
+    return(NULL)
+  }
+
+  species[[1]]
+}
+
 #' @export
 make_metadata_table <- function(db_path) {
   con <- dbConnect(SQLite(), db_path)

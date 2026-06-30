@@ -32,6 +32,7 @@ box::use(
     visOptions,
     visInteraction,
     visLayout,
+    visEvents,
     visGroups,
     visLegend,
     visSave,
@@ -347,7 +348,10 @@ mst_pie_metadata <- function(node_ids, metadata, col_var, var_cols) {
     values <- metadata[match(members, metadata$isolate), col_var]
     cats <- unique(values)
     slices <- vapply(cats, function(v) {
-      share <- sum(values == v | (is.na(values) & is.na(v))) / length(values) * 100
+      # NA-safe membership: an NA category matches NA values, otherwise a
+      # present value matches by equality (avoids NA poisoning the sum).
+      in_cat <- if (is.na(v)) is.na(values) else (!is.na(values) & values == v)
+      share <- sum(in_cat) / length(values) * 100
       color <- var_cols$color[match(v, var_cols$value)]
       sprintf('{"value":%s,"color":"%s"}', share, color)
     }, character(1))
@@ -526,7 +530,16 @@ build_mst_visnetwork <- function(graph, metadata, opts) {
     ) |>
     visOptions(collapse = TRUE) |>
     visInteraction(hover = TRUE) |>
-    visLayout(randomSeed = 1)
+    visLayout(randomSeed = 1) |>
+    # The physics stabilization runs on a hidden canvas after the data arrives;
+    # signal the loading overlay to clear only once the network is laid out and
+    # drawn, otherwise the spinner vanishes into several seconds of blank space.
+    visEvents(
+      stabilizationIterationsDone = paste0(
+        "function(){document.querySelectorAll('.viz-plot-stage')",
+        ".forEach(function(s){s.classList.remove('is-loading');});}"
+      )
+    )
 
   # Area clusters: colour each multi-node group; singletons keep the node colour.
   if (!is.null(clusters) && !skeleton) {
