@@ -58,6 +58,7 @@ box::use(
     ],
   app / logic / tree_plot[build_tree_ggtree, save_tree_plot],
   app / logic / database_functions[make_metadata_table],
+  app / view / map_plot,
 )
 
 # --- shared option sets (placeholders; populated from the database in backend) -
@@ -805,7 +806,7 @@ ui <- function(id) {
       radioGroupButtons(
         ns("plot_type"),
         label = "Plot type",
-        choices = c("MST", "Tree"),
+        choices = c("MST", "Tree", "Map"),
         selected = "MST",
         justified = TRUE
       ),
@@ -977,6 +978,13 @@ server <- function(
         )
       }
       graph
+    })
+
+    map_obj <- eventReactive(input$generate, {
+      if (!identical(input$plot_type, "Map")) {
+        return(NULL)
+      }
+      map_plot$server("map_plot")
     })
 
     # Per-isolate metadata (cached until the database changes); feeds both
@@ -1314,6 +1322,18 @@ server <- function(
             downloadButton(ns("download_nj"), "Download plot")
           )
         )
+      } else if (identical(type, "Map")) {
+        div(
+          class = "viz-plot-stage",
+          prompt,
+          loading,
+          map_plot$ui(ns("map_plot")),
+          # Hidden target the export action button clicks to start the download.
+          div(
+            style = "display:none;",
+            downloadButton(ns("map_html"), "Download HTML")
+          )
+        )
       } else {
         # Canvas width derives from the panel height and the aspect-ratio
         # control; the height is only known after a first render, so fall back
@@ -1396,6 +1416,8 @@ server <- function(
         save_mst_html(mst_widget(), file, bg)
       }
     )
+
+    map_plot$ui(ns("map_plot"))
 
     # The export tab uses an action button; route it to the hidden download
     # link. Only HTML export is wired for now.
