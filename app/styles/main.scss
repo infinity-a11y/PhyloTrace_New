@@ -786,6 +786,87 @@
     width: 400px;
 }
 
+// Loci Info layout: mirrors Scheme Info. The loci table fills the row, the
+// allele controls hold a fixed width on the right. `as_fill_carrier` adds
+// .html-fill-container (flex-direction: column), overridden here to a row.
+.loci-info-layout {
+    gap: var(--bs-gutter-x, 1.5rem);
+    height: 100%;
+    min-height: 0;
+}
+
+.loci-info-layout.html-fill-container {
+    flex-direction: row;
+}
+
+.loci-info-layout>.loci-info-main {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+// Right column: allele selector card (natural height) stacked above the
+// sequence viewer card (fills the remaining height).
+.loci-info-layout>.loci-controls {
+    flex: 0 0 460px;
+    width: 460px;
+    display: flex;
+    flex-direction: column;
+    gap: var(--bs-gutter-x, 1.5rem);
+    min-height: 0;
+}
+
+.loci-info-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.loci-export-btn {
+    width: auto;
+}
+
+// The three allele actions (copy sequence / copy index / download locus).
+.loci-allele-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    justify-content: center;
+    margin-top: 1rem;
+}
+
+.loci-allele-actions .btn {
+    width: auto;
+}
+
+// Colour-coded nucleotide viewer.
+.sequence {
+    font-family: monospace;
+    white-space: pre-wrap;
+    word-break: break-all;
+    background: #282F38;
+    max-height: 368px;
+    overflow-y: auto;
+    border-radius: 7px;
+    padding: 12px;
+    margin: 0;
+}
+
+.base-a {
+    color: #ff8080;
+}
+
+.base-t {
+    color: #00d169;
+}
+
+.base-g {
+    color: #007bff;
+}
+
+.base-c {
+    color: #ffb565;
+}
+
 // Species photo presented as a rounded "hero" with an overlaid name caption.
 // Used by the Database > Scheme Info panel where the image sits above the
 // Details card rather than floating inside it.

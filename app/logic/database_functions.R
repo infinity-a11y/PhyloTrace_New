@@ -10,10 +10,16 @@ box::use(
     dbClearResult,
     dbReadTable,
     dbWriteTable,
+    dbGetQuery,
     dbExecute
   ],
   RSQLite[SQLite],
 )
+
+# The scheme's `targets` table stores loci as "FTL_0001" while the `mlst` table
+# stores the same locus as "FTL-0001"; normalise the separator so the two can
+# be matched.
+.norm_locus <- function(x) gsub("[-_]", "-", x)
 
 
 #' @export
@@ -174,4 +180,117 @@ save_metadata_table <- function(db_path, data) {
   on.exit(dbDisconnect(con))
   dbWriteTable(con, "metadata", data, overwrite = TRUE)
   invisible(TRUE)
+}
+
+#' Read the scheme's `targets` (loci) table and enrich it with the number of
+#' distinct alleles stored per locus.
+#'
+#' Returns a data frame with the display columns `Locus`, `Gene`, `Start`,
+#' `Length`, `Product`, `Allele Count`, plus an internal `.gene` column that
+#' carries the matching `mlst` gene name (the loci-detail queries key on the
+#' `mlst` spelling, not the `targets` one). Returns NULL when the database is
+#' missing the `targets` or `mlst` table.
+#' @export
+load_loci_info <- function(db_path) {
+  con <- dbConnect(SQLite(), db_path)
+  on.exit(dbDisconnect(con))
+
+  tables <- dbListTables(con)
+  if (isFALSE(all(c("targets", "mlst") %in% tables))) {
+    message("Database does not contain 'targets' and 'mlst' tables")
+    return(NULL)
+  }
+
+  targets <- dbReadTable(con, "targets")
+
+  # Distinct alleles per locus (the synthetic "ref" allele is counted too, as
+  # it is a valid scheme allele).
+  counts <- dbGetQuery(
+    con,
+    "SELECT gene, COUNT(DISTINCT seqid) AS n FROM mlst GROUP BY gene"
+  )
+
+  idx <- match(.norm_locus(targets$Locus), .norm_locus(counts$gene))
+
+  targets$.gene <- counts$gene[idx]
+  allele_count <- counts$n[idx]
+  allele_count[is.na(allele_count)] <- 0L
+  targets[["Allele Count"]] <- allele_count
+
+  # Replace the raw ".fasta" filename column with the integer count.
+  targets$Alleles <- NULL
+
+  targets
+}
+
+#' Allele usage for one locus.
+#'
+#' `gene` is the `mlst` gene name (the `.gene` column of `load_loci_info`).
+#' Returns a data frame of every distinct allele stored for the locus with
+#' columns `seqid` (integer allele index), `count` (isolates carrying it,
+#' excluding the synthetic "ref") and `present` (`count > 0`). Rows are ordered
+#' present-first, then by descending count.
+#' @export
+load_locus_alleles <- function(db_path, gene) {
+  con <- dbConnect(SQLite(), db_path)
+  on.exit(dbDisconnect(con))
+
+  all_ids <- dbGetQuery(
+    con,
+    "SELECT DISTINCT seqid FROM mlst WHERE gene = ?",
+    params = list(gene)
+  )$seqid
+
+  usage <- dbGetQuery(
+    con,
+    "SELECT seqid, COUNT(*) AS count FROM mlst
+       WHERE gene = ? AND souche != 'ref' GROUP BY seqid",
+    params = list(gene)
+  )
+
+  df <- data.frame(seqid = all_ids, stringsAsFactors = FALSE)
+  df$count <- usage$count[match(df$seqid, usage$seqid)]
+  df$count[is.na(df$count)] <- 0L
+  df$present <- df$count > 0L
+
+  df[order(!df$present, -df$count), , drop = FALSE]
+}
+
+#' Nucleotide sequence (character scalar) for a single allele index, or NULL
+#' when the index is not stored.
+#' @export
+load_allele_sequence <- function(db_path, seqid) {
+  con <- dbConnect(SQLite(), db_path)
+  on.exit(dbDisconnect(con))
+
+  res <- dbGetQuery(
+    con,
+    "SELECT sequence FROM sequences WHERE id = ?",
+    params = list(seqid)
+  )$sequence
+
+  if (!length(res)) NULL else res[[1]]
+}
+
+#' All alleles of a locus as FASTA text: one `>index` / sequence record per
+#' distinct allele stored for `gene`. Returns a character vector (one element
+#' per record), or an empty vector when the locus has no alleles.
+#' @export
+locus_fasta <- function(db_path, gene) {
+  con <- dbConnect(SQLite(), db_path)
+  on.exit(dbDisconnect(con))
+
+  res <- dbGetQuery(
+    con,
+    "SELECT DISTINCT s.id AS seqid, s.sequence AS sequence
+       FROM mlst m JOIN sequences s ON s.id = m.seqid
+      WHERE m.gene = ? ORDER BY s.id",
+    params = list(gene)
+  )
+
+  if (!nrow(res)) {
+    return(character(0))
+  }
+
+  paste0(">", res$seqid, "\n", res$sequence)
 }
