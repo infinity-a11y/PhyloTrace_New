@@ -38,7 +38,7 @@ box::use(
   ],
   shinyjs[runjs],
   htmltools[tagQuery],
-  waiter[useWaiter, waiterShowOnLoad],
+  waiter[useWaiter, waiterShowOnLoad, Waiter, spin_flower],
 )
 box::use(
   app / logic / functions[render_info],
@@ -266,6 +266,26 @@ server <- function(id) {
     })
 
     observeEvent(STARTUP_vals$load_database(), {
+      db_path <- STARTUP_vals$db_path()
+
+      # Full-page loading overlay. The panel HTML below is built synchronously
+      # here; the outputs inside those panels that opt out of suspendWhenHidden
+      # pre-render on the following flushes, i.e. underneath this overlay.
+      w <- Waiter$new(
+        id = NULL,
+        html = div(
+          class = "spinner-custom",
+          spin_flower(),
+          div(
+            tags$h5("Loading Database ..."),
+            if (length(db_path) && !is.na(db_path)) {
+              div(id = "db-load", basename(db_path))
+            }
+          )
+        )
+      )
+      w$show()
+
       app_panels <- list(
         fillable_panel(
           "Database Browser",
@@ -316,8 +336,6 @@ server <- function(id) {
         )
       }
 
-      db_path <- STARTUP_vals$db_path()
-
       nav_insert(
         id = "tabs",
         nav = nav_item(
@@ -361,6 +379,16 @@ server <- function(id) {
         file.path(app_local_share_path, "state.json"),
         pretty = TRUE,
         auto_unbox = TRUE
+      )
+
+      # The load is near-instant, so hold the overlay for a short buffer to read
+      # as a deliberate loading step. Hide asynchronously via later() so the show
+      # and hide land in separate flushes and the overlay is actually painted.
+      # withReactiveDomain() restores the session inside the later callback so
+      # waiter can resolve it (otherwise w$hide() errors on a NULL session).
+      later::later(
+        function() shiny::withReactiveDomain(session, w$hide()),
+        delay = 1
       )
     })
 

@@ -623,7 +623,8 @@
     margin-bottom: 2rem;
 }
 
-#scheme-load {
+#scheme-load,
+#db-load {
     font-size: 2em;
     font-family: monospace;
 }
@@ -826,12 +827,19 @@
 }
 
 // The three allele actions (copy sequence / copy index / download locus).
+// Allele card header: title on the left, control buttons on the right.
+.loci-allele-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+}
+
+// The three allele actions (copy sequence / copy index / download locus).
 .loci-allele-actions {
     display: flex;
     flex-wrap: wrap;
     gap: 0.5rem;
-    justify-content: center;
-    margin-top: 1rem;
 }
 
 .loci-allele-actions .btn {
@@ -839,16 +847,67 @@
 }
 
 // Colour-coded nucleotide viewer.
+// Loci table body: mirror the Browse Entries (.db-page_body) fill/scroll rules
+// so the DataTable fills the card and scrolls internally (paging is off and
+// scrollY = "1px" + scrollCollapse enables the scrolling body). Only the fill
+// wiring is copied here - not the editable-cell cursor styling.
+.loci-table-body {
+    overflow: hidden;
+
+    .datatables {
+        height: 100%;
+    }
+
+    .dataTables_wrapper {
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .dataTables_scroll {
+        flex: 1 1 auto;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .dataTables_scrollHead {
+        flex-shrink: 0;
+        overflow: hidden !important;
+    }
+
+    .dataTables_scrollBody {
+        flex: 1 1 auto !important;
+        min-height: 0 !important;
+        max-height: none !important;
+        overflow-y: auto !important;
+    }
+
+    .dataTables_info {
+        flex-shrink: 0;
+        padding-top: 0.35rem;
+        font-size: 0.85rem;
+        color: var(--bs-secondary-color);
+    }
+}
+
+// FASTA viewer applied directly to the sequence card body (no <pre>). It fills
+// the remaining card height via bslib's fill layout, so only the scroll and
+// text styling live here.
 .sequence {
     font-family: monospace;
     white-space: pre-wrap;
     word-break: break-all;
+    text-align: left;
     background: #282F38;
-    max-height: 368px;
+    color: #d7dde5;
     overflow-y: auto;
-    border-radius: 7px;
     padding: 12px;
-    margin: 0;
+}
+
+.fasta-header {
+    color: #ffffff;
+    font-weight: 700;
 }
 
 .base-a {

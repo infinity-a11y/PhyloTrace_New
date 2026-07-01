@@ -16,7 +16,6 @@ box::use(
     req,
     div,
     span,
-    tags,
     icon,
     actionButton,
     downloadButton,
@@ -25,9 +24,16 @@ box::use(
     uiOutput,
     HTML
   ],
-  bslib[as_fill_carrier, as_fill_item, card, card_header, card_body],
+  bslib[
+    as_fill_carrier,
+    as_fill_item,
+    as_fillable_container,
+    card,
+    card_header,
+    card_body
+  ],
   DT[DTOutput, renderDT, datatable],
-  shinyWidgets[pickerInput, pickerOptions],
+  shinyWidgets[pickerInput, pickerOptions, updatePickerInput],
   shinyjs[runjs],
   jsonlite[toJSON],
   utils[write.csv]
@@ -84,7 +90,7 @@ ui <- function(id) {
               fill = TRUE,
               full_screen = TRUE,
               card_header(
-                class = "bg-dark loci-info-header",
+                class = "loci-info-header",
                 "Loci",
                 downloadButton(
                   ns("export_csv"),
@@ -93,36 +99,86 @@ ui <- function(id) {
                   class = "btn-sm loci-export-btn"
                 )
               ),
-              card_body(as_fill_item(DTOutput(ns("db_loci"))))
+              # Plain (non-fillable) body carrying the DataTables fill/scroll
+              # rules, mirroring the Browse Entries table so the table fills the
+              # card and scrolls internally instead of paginating.
+              card_body(
+                class = "loci-table-body",
+                fillable = FALSE,
+                DTOutput(ns("db_loci"), fill = TRUE)
+              )
             )
           )
         )
       ),
-      div(
-        class = "loci-controls",
-        card(
-          fill = FALSE,
-          card_header(class = "bg-dark", "Select Allele"),
-          card_body(
-            uiOutput(ns("allele_selector")),
-            div(
-              class = "loci-allele-actions",
-              actionButton(ns("copy_seq"), "Sequence", icon = icon("copy")),
-              actionButton(ns("copy_idx"), "Index", icon = icon("hashtag")),
-              downloadButton(
-                ns("download_locus"),
-                "Locus",
-                icon = icon("download")
+      # Fillable column so the sequence card grows into the remaining height
+      # while the selector card keeps its natural size.
+      as_fillable_container(
+        div(
+          class = "loci-controls",
+          card(
+            fill = FALSE,
+            card_header("Select Allele"),
+            card_body(
+              # Static picker whose choices are refreshed in place via
+              # updatePickerInput on row selection. Rebuilding the whole widget
+              # with renderUI left a stale, open dropdown out of sync with its
+              # label (and fought the body-rendered menu below).
+              pickerInput(
+                ns("allele_select"),
+                label = NULL,
+                choices = character(0),
+                options = pickerOptions(
+                  liveSearch = TRUE,
+                  size = 10,
+                  liveSearchPlaceholder = "Search alleles ...",
+                  # Render the menu in <body> so it is not clipped by the
+                  # card's overflow when it extends past the card's edges.
+                  container = "body"
+                )
               )
             )
-          )
-        ),
-        as_fill_item(
+          ),
           card(
             fill = TRUE,
             full_screen = TRUE,
-            card_header(class = "bg-dark", uiOutput(ns("allele_title"))),
-            card_body(uiOutput(ns("allele_sequence")))
+            # Card header hosts the allele title and its control buttons (the
+            # bslib idiom for card-level actions).
+            card_header(
+              class = "loci-allele-header",
+              uiOutput(ns("allele_title")),
+              div(
+                class = "loci-allele-actions",
+                actionButton(
+                  ns("copy_seq"),
+                  "Sequence",
+                  icon = icon("copy"),
+                  class = "btn-sm"
+                ),
+                actionButton(
+                  ns("copy_idx"),
+                  "Index",
+                  icon = icon("hashtag"),
+                  class = "btn-sm"
+                ),
+                downloadButton(
+                  ns("download_locus"),
+                  "Locus",
+                  icon = icon("download"),
+                  class = "btn-sm"
+                )
+              )
+            ),
+            # FASTA record rendered straight into the (scrolling) card body; the
+            # `sequence` class supplies the monospace/pre-wrap styling that used
+            # to live on a <pre>. `fillable = FALSE` keeps the body a normal
+            # block (it still fills the card height) so the sequence text flows
+            # and wraps inline instead of being stacked by the flex layout.
+            card_body(
+              class = "sequence",
+              fillable = FALSE,
+              uiOutput(ns("allele_sequence"))
+            )
           )
         )
       )
@@ -173,14 +229,23 @@ server <- function(
 
       render_info("output$db_loci")
 
+      # Same setup as the Browse Entries table: per-column search row
+      # (filter = "top"), no pagination/length menu/global search (dom = "ti"),
+      # and the scrollY = "1px" + scrollCollapse trick so the body scrolls and
+      # fills the card (see the .loci-table-body CSS). Single-row selection is
+      # kept because it drives the allele panel.
       datatable(
         li[, display_cols, drop = FALSE],
         rownames = FALSE,
+        filter = "top",
         selection = list(mode = "single", selected = 1),
         class = "stripe row-border order-column",
         options = list(
-          pageLength = 15,
+          dom = "ti",
+          paging = FALSE,
           scrollX = TRUE,
+          scrollY = "1px",
+          scrollCollapse = TRUE,
           columnDefs = list(list(className = "dt-left", targets = "_all"))
         )
       )
@@ -202,9 +267,10 @@ server <- function(
       load_locus_alleles(db_path(), selected_row()$.gene)
     })
 
-    # Allele dropdown: present alleles first (with usage stats), then alleles
-    # stored but not carried by any isolate.
-    output$allele_selector <- renderUI({
+    # Refresh the allele dropdown in place whenever the selected locus changes.
+    # Present alleles are listed first (with usage stats), then alleles stored
+    # but not carried by any isolate.
+    observeEvent(alleles(), {
       df <- alleles()
       req(nrow(df) > 0)
 
@@ -220,15 +286,11 @@ server <- function(
         sprintf("Allele %s - not present", df$seqid)
       )
 
-      pickerInput(
-        ns("allele_select"),
-        label = NULL,
+      updatePickerInput(
+        session,
+        "allele_select",
         choices = stats::setNames(as.character(df$seqid), labels),
-        options = pickerOptions(
-          liveSearch = TRUE,
-          size = 10,
-          liveSearchPlaceholder = "Search loci ..."
-        )
+        selected = as.character(df$seqid[1])
       )
     })
 
@@ -237,7 +299,9 @@ server <- function(
       span(paste("Allele", input$allele_select))
     })
 
-    # Colour-coded sequence of the selected allele.
+    # Colour-coded allele in FASTA form: a ">index" header line followed by the
+    # sequence. The card body carries `white-space: pre-wrap` so the newline
+    # renders without a <pre> wrapper.
     output$allele_sequence <- renderUI({
       req(db_path(), input$allele_select)
 
@@ -250,7 +314,12 @@ server <- function(
 
       render_info("output$allele_sequence")
 
-      tags$pre(HTML(color_sequence(sequence)), class = "sequence")
+      HTML(paste0(
+        "<span class=\"fasta-header\">&gt;",
+        input$allele_select,
+        "</span>\n",
+        color_sequence(sequence)
+      ))
     })
 
     # Copy actions -----------------------------------------------------------

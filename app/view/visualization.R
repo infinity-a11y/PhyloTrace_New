@@ -1,12 +1,13 @@
 # app/view/visualization.R
 #
 # Visualization coordinator. Hosts the shared "setup" sidebar (plot type,
-# Generate, options, reset) and swaps between two self-contained plot-engine
-# submodules — app/view/visualization_mst.R and app/view/visualization_tree.R —
-# inside a navset_hidden. Each engine owns its own control panel and plot area;
-# this module only forwards the shared reactives (db_path, session_reset, the
-# per-isolate metadata, na_handling, the Generate tick and the selected plot
-# type) down to both and toggles which panel is visible.
+# Generate, options, reset) and swaps between the self-contained plot-engine
+# submodules — app/view/visualization_mst.R, app/view/visualization_tree.R and
+# app/view/map_plot.R — inside a navset_hidden. Each engine owns its own control
+# panel and plot area; this module only forwards the shared reactives (db_path,
+# session_reset, the per-isolate metadata, na_handling, the Generate tick and
+# the selected plot type) down to all three engines and toggles which panel is
+# visible. The map engine geocodes the metadata's spatial fields on Generate.
 
 box::use(
   shiny[
@@ -35,9 +36,9 @@ box::use(
 )
 box::use(
   app / logic / database_functions[make_metadata_table],
-  app / view / map_plot,
   app / view / visualization_mst,
   app / view / visualization_tree,
+  app / view / map_plot,
 )
 
 #' @export
@@ -128,6 +129,11 @@ ui <- function(id) {
         title = "Tree",
         value = "Tree",
         visualization_tree$ui(ns("tree"), generate_id = ns("generate"))
+      )),
+      as_fill_carrier(nav_panel(
+        title = "Map",
+        value = "Map",
+        map_plot$ui(ns("map"))
       ))
     ),
     # MutationObserver: as soon as a .viz-nav-wrap mounts in the DOM (the panels
@@ -167,68 +173,9 @@ server <- function(
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
 
-    # Whether a plot has been generated for the current engine. Drives the
-    # preview between its prompt and the (placeholder) rendered image.
-    generated <- reactiveVal(FALSE)
-
-    # The computed phylo tree / MST graph. These compute on Generate but only
-    # when actually read by their (visible) output, so the work happens during
-    # output rendering where the waiter spinner can cover it.
-    tree_obj <- eventReactive(input$generate, {
-      if (!identical(input$plot_type, "Tree")) {
-        return(NULL)
-      }
-      tree <- tryCatch(
-        compute_phylo_tree(db_path(), input$na_handling, input$algo),
-        error = function(e) {
-          shiny::showNotification(
-            paste("Tree computation failed:", conditionMessage(e)),
-            type = "error"
-          )
-          NULL
-        }
-      )
-      if (is.null(tree)) {
-        shiny::showNotification(
-          "Could not build a tree: need at least 3 isolates in the database.",
-          type = "warning"
-        )
-      }
-      tree
-    })
-
-    mst_obj <- eventReactive(input$generate, {
-      if (!identical(input$plot_type, "MST")) {
-        return(NULL)
-      }
-      graph <- tryCatch(
-        compute_mst(db_path(), input$na_handling),
-        error = function(e) {
-          shiny::showNotification(
-            paste("MST computation failed:", conditionMessage(e)),
-            type = "error"
-          )
-          NULL
-        }
-      )
-      if (is.null(graph)) {
-        shiny::showNotification(
-          "Could not build an MST: need at least 2 isolates in the database.",
-          type = "warning"
-        )
-      }
-      graph
-    })
-
-    map_obj <- eventReactive(input$generate, {
-      if (!identical(input$plot_type, "Map")) {
-        return(NULL)
-      }
-      map_plot$server("map_plot")
-    })
-
-    # Per-isolate metadata (cached until the database changes); feeds both
-    # engines' labels, mappings, and metadata-backed select choices.
+    # Per-isolate metadata (cached until the database changes); computed once
+    # here and shared with both engines' labels, mappings, and select choices so
+    # the database is read at most once per invalidation.
     viz_metadata <- reactive({
       req(db_path())
       make_metadata_table(db_path())
@@ -248,6 +195,7 @@ server <- function(
       visualization_tree$server,
       c(list("tree"), shared, list(algo = reactive(input$algo)))
     )
+    do.call(map_plot$server, c(list("map"), shared))
 
     # Swap the visible engine panel when the plot type changes, and show the
     # Tree-only algorithm picker only while Tree is selected.
