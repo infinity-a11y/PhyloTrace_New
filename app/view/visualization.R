@@ -35,6 +35,7 @@ box::use(
 )
 box::use(
   app / logic / database_functions[make_metadata_table],
+  app / view / map_plot,
   app / view / visualization_mst,
   app / view / visualization_tree,
 )
@@ -66,7 +67,7 @@ ui <- function(id) {
       radioGroupButtons(
         ns("plot_type"),
         label = "Plot type",
-        choices = c("MST", "Tree"),
+        choices = c("MST", "Tree", "Map"),
         selected = "MST",
         justified = TRUE
       ),
@@ -166,9 +167,68 @@ server <- function(
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
 
-    # Per-isolate metadata (cached until the database changes); computed once
-    # here and shared with both engines' labels, mappings, and select choices so
-    # the database is read at most once per invalidation.
+    # Whether a plot has been generated for the current engine. Drives the
+    # preview between its prompt and the (placeholder) rendered image.
+    generated <- reactiveVal(FALSE)
+
+    # The computed phylo tree / MST graph. These compute on Generate but only
+    # when actually read by their (visible) output, so the work happens during
+    # output rendering where the waiter spinner can cover it.
+    tree_obj <- eventReactive(input$generate, {
+      if (!identical(input$plot_type, "Tree")) {
+        return(NULL)
+      }
+      tree <- tryCatch(
+        compute_phylo_tree(db_path(), input$na_handling, input$algo),
+        error = function(e) {
+          shiny::showNotification(
+            paste("Tree computation failed:", conditionMessage(e)),
+            type = "error"
+          )
+          NULL
+        }
+      )
+      if (is.null(tree)) {
+        shiny::showNotification(
+          "Could not build a tree: need at least 3 isolates in the database.",
+          type = "warning"
+        )
+      }
+      tree
+    })
+
+    mst_obj <- eventReactive(input$generate, {
+      if (!identical(input$plot_type, "MST")) {
+        return(NULL)
+      }
+      graph <- tryCatch(
+        compute_mst(db_path(), input$na_handling),
+        error = function(e) {
+          shiny::showNotification(
+            paste("MST computation failed:", conditionMessage(e)),
+            type = "error"
+          )
+          NULL
+        }
+      )
+      if (is.null(graph)) {
+        shiny::showNotification(
+          "Could not build an MST: need at least 2 isolates in the database.",
+          type = "warning"
+        )
+      }
+      graph
+    })
+
+    map_obj <- eventReactive(input$generate, {
+      if (!identical(input$plot_type, "Map")) {
+        return(NULL)
+      }
+      map_plot$server("map_plot")
+    })
+
+    # Per-isolate metadata (cached until the database changes); feeds both
+    # engines' labels, mappings, and metadata-backed select choices.
     viz_metadata <- reactive({
       req(db_path())
       make_metadata_table(db_path())
