@@ -27,7 +27,7 @@ box::use(
   ],
   bslib[as_fill_carrier, as_fill_item, card, card_header, card_body],
   DT[DTOutput, renderDT, datatable],
-  shinyWidgets[pickerInput],
+  shinyWidgets[pickerInput, pickerOptions],
   shinyjs[runjs],
   jsonlite[toJSON],
   utils[write.csv]
@@ -224,7 +224,11 @@ server <- function(
         ns("allele_select"),
         label = NULL,
         choices = stats::setNames(as.character(df$seqid), labels),
-        options = list(`live-search` = TRUE, size = 10)
+        options = pickerOptions(
+          liveSearch = TRUE,
+          size = 10,
+          liveSearchPlaceholder = "Search loci ..."
+        )
       )
     })
 

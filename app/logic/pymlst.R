@@ -225,7 +225,12 @@ start_typing <- function(
     ),
     wd = dirname(db_path),
     stdout = log_file,
-    stderr = "2>&1"
+    stderr = "2>&1",
+    # The bash wrapper spawns `conda run` -> python (wgMLST), and it is that
+    # descendant that actually holds the SQLite lock. cleanup_tree tags the whole
+    # subtree so it can be killed as a unit (via kill_tree() or on GC) - killing
+    # just the bash wrapper would orphan pymlst and leave the database locked.
+    cleanup_tree = TRUE
   )
 }
 

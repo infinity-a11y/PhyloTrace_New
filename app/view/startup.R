@@ -236,12 +236,12 @@ server <- function(
       db_metadata <- file.info(db_path)
       db_name <- basename(db_path)
       db_time <- format(db_metadata$mtime, "%Y-%m-%d %H:%M:%S")
-      db_size <- if (db_metadata$size >= 1024^3) {
-        paste0(round(db_metadata$size / 1024^3, 2), " GB")
-      } else if (db_metadata$size >= 1024^2) {
-        paste0(round(db_metadata$size / 1024^2, 2), " MB")
-      } else if (db_metadata$size >= 1024) {
-        paste0(round(db_metadata$size / 1024, 2), " KB")
+      db_size <- if (db_metadata$size >= 1000^3) {
+        paste0(round(db_metadata$size / 1000^3, 2), " GB")
+      } else if (db_metadata$size >= 1000^2) {
+        paste0(round(db_metadata$size / 1000^2, 2), " MB")
+      } else if (db_metadata$size >= 1000) {
+        paste0(round(db_metadata$size / 1000, 2), " KB")
       } else {
         paste0(db_metadata$size, " Bytes")
       }

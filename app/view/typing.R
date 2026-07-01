@@ -276,14 +276,27 @@ server <- function(
     )
     log_text <- reactiveVal("")
 
+    # Non-reactive mirror of the live typing process. onSessionEnded() runs
+    # outside the reactive context (it cannot read Typing$proc), so we keep a
+    # plain handle here to guarantee the process tree is killed when the app
+    # window closes - otherwise pymlst is orphaned and keeps the database
+    # locked, breaking the next launch.
+    live_proc <- NULL
+    session$onSessionEnded(function() {
+      if (!is.null(live_proc) && live_proc$is_alive()) {
+        tryCatch(live_proc$kill_tree(), error = function(e) NULL)
+      }
+    })
+
     # Reset server reactives on session reset
     observeEvent(
       session_reset(),
       {
         if (!is.null(Typing$proc) && Typing$proc$is_alive()) {
           Typing$terminated <- TRUE
-          tryCatch(Typing$proc$kill(), error = function(e) NULL)
+          tryCatch(Typing$proc$kill_tree(), error = function(e) NULL)
         }
+        live_proc <<- NULL
         Typing$genome_input <- NULL
         Typing$files <- character(0)
         Typing$strains <- character(0)
@@ -721,6 +734,7 @@ server <- function(
       }
 
       Typing$proc <- proc
+      live_proc <<- proc
       Typing$status <- "running"
       runjs(sprintf(
         "var el = document.getElementById('%s'); if (el) el.classList.add('is-animating');",
@@ -750,7 +764,7 @@ server <- function(
     observeEvent(input$terminate, {
       req(identical(Typing$status, "running"), !is.null(Typing$proc))
       Typing$terminated <- TRUE
-      tryCatch(Typing$proc$kill(), error = function(e) NULL)
+      tryCatch(Typing$proc$kill_tree(), error = function(e) NULL)
     })
 
     # Expose the current typing status for other modules to react to.

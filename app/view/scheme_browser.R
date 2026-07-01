@@ -44,7 +44,7 @@ box::use(
     as_fillable_container,
     as_fill_carrier
   ],
-  shinyWidgets[pickerInput],
+  shinyWidgets[pickerInput, pickerOptions],
   DT[DTOutput, renderDT, datatable],
   waiter[autoWaiter, spin_flower, Waiter, transparent],
   fs[path_home],
@@ -237,10 +237,11 @@ server <- function(id, session_reset = shiny::reactive(0L)) {
         choicesOpt = list(
           subtext = rep("cgMLST", nrow(cgmlst_org_schemes))
         ),
-        options = list(
-          `live-search` = TRUE,
+        options = pickerOptions(
+          liveSearch = TRUE,
           size = 10,
-          `show-subtext` = TRUE
+          showSubtext = TRUE,
+          liveSearchPlaceholder = "Search loci ..."
         )
       )
     })

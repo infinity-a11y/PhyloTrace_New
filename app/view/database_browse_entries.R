@@ -88,9 +88,11 @@ ui <- function(id) {
                 multiple = TRUE,
                 options = pickerOptions(
                   actionsBox = TRUE,
-                  title = "Show columns …",
+                  title = "Show fields …",
                   selectedTextFormat = "count > 3",
-                  countSelectedText = "{0} / 10 columns"
+                  countSelectedText = "{0} / 10 fields",
+                  liveSearch = TRUE,
+                  liveSearchPlaceholder = "Search fields ..."
                 )
               )
             )
@@ -196,7 +198,9 @@ server <- function(
           actionsBox = TRUE,
           title = "Select isolates to remove …",
           selectedTextFormat = "count > 2",
-          countSelectedText = "{0} isolates selected"
+          countSelectedText = "{0} isolates selected",
+          liveSearch = TRUE,
+          liveSearchPlaceholder = "Search isolates ..."
         )
       )
     })
