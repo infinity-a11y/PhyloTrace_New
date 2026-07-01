@@ -25,9 +25,16 @@ box::use(
     uiOutput,
     HTML
   ],
-  bslib[as_fill_carrier, as_fill_item, card, card_header, card_body],
+  bslib[
+    as_fill_carrier,
+    as_fill_item,
+    as_fillable_container,
+    card,
+    card_header,
+    card_body
+  ],
   DT[DTOutput, renderDT, datatable],
-  shinyWidgets[pickerInput, pickerOptions],
+  shinyWidgets[pickerInput, pickerOptions, updatePickerInput],
   shinyjs[runjs],
   jsonlite[toJSON],
   utils[write.csv]
@@ -93,36 +100,53 @@ ui <- function(id) {
                   class = "btn-sm loci-export-btn"
                 )
               ),
-              card_body(as_fill_item(DTOutput(ns("db_loci"))))
+              card_body(DTOutput(ns("db_loci")))
             )
           )
         )
       ),
-      div(
-        class = "loci-controls",
-        card(
-          fill = FALSE,
-          card_header(class = "bg-dark", "Select Allele"),
-          card_body(
-            uiOutput(ns("allele_selector")),
-            div(
-              class = "loci-allele-actions",
-              actionButton(ns("copy_seq"), "Sequence", icon = icon("copy")),
-              actionButton(ns("copy_idx"), "Index", icon = icon("hashtag")),
-              downloadButton(
-                ns("download_locus"),
-                "Locus",
-                icon = icon("download")
+      # Fillable column so the sequence card grows into the remaining height
+      # while the selector card keeps its natural size.
+      as_fillable_container(
+        div(
+          class = "loci-controls",
+          card(
+            fill = FALSE,
+            card_header(class = "bg-dark", "Select Allele"),
+            card_body(
+              # Static picker whose choices are refreshed in place via
+              # updatePickerInput on row selection (re-rendering the whole
+              # widget left a stale, open dropdown out of sync with its label).
+              pickerInput(
+                ns("allele_select"),
+                label = NULL,
+                choices = character(0),
+                options = pickerOptions(
+                  liveSearch = TRUE,
+                  size = 10,
+                  liveSearchPlaceholder = "Search alleles ...",
+                  # Render the menu in <body> so it is not clipped by the
+                  # card's overflow when it extends past the card's edges.
+                  container = "body"
+                )
+              ),
+              div(
+                class = "loci-allele-actions",
+                actionButton(ns("copy_seq"), "Sequence", icon = icon("copy")),
+                actionButton(ns("copy_idx"), "Index", icon = icon("hashtag")),
+                downloadButton(
+                  ns("download_locus"),
+                  "Locus",
+                  icon = icon("download")
+                )
               )
             )
-          )
-        ),
-        as_fill_item(
+          ),
           card(
             fill = TRUE,
             full_screen = TRUE,
             card_header(class = "bg-dark", uiOutput(ns("allele_title"))),
-            card_body(uiOutput(ns("allele_sequence")))
+            card_body(as_fill_item(uiOutput(ns("allele_sequence"))))
           )
         )
       )
@@ -202,9 +226,10 @@ server <- function(
       load_locus_alleles(db_path(), selected_row()$.gene)
     })
 
-    # Allele dropdown: present alleles first (with usage stats), then alleles
-    # stored but not carried by any isolate.
-    output$allele_selector <- renderUI({
+    # Refresh the allele dropdown in place whenever the selected locus changes.
+    # Present alleles are listed first (with usage stats), then alleles stored
+    # but not carried by any isolate.
+    observeEvent(alleles(), {
       df <- alleles()
       req(nrow(df) > 0)
 
@@ -220,15 +245,11 @@ server <- function(
         sprintf("Allele %s - not present", df$seqid)
       )
 
-      pickerInput(
-        ns("allele_select"),
-        label = NULL,
+      updatePickerInput(
+        session,
+        "allele_select",
         choices = stats::setNames(as.character(df$seqid), labels),
-        options = pickerOptions(
-          liveSearch = TRUE,
-          size = 10,
-          liveSearchPlaceholder = "Search loci ..."
-        )
+        selected = as.character(df$seqid[1])
       )
     })
 

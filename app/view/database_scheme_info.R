@@ -58,7 +58,7 @@ ui <- function(id) {
                 class = "bg-dark",
                 "Scheme Metadata"
               ),
-              card_body(as_fill_item(DTOutput(ns("local_scheme_table"))))
+              card_body(DTOutput(ns("local_scheme_table")))
             )
           )
         )

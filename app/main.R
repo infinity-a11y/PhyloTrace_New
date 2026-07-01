@@ -38,7 +38,7 @@ box::use(
   ],
   shinyjs[runjs],
   htmltools[tagQuery],
-  waiter[useWaiter, waiterShowOnLoad],
+  waiter[useWaiter, waiterShowOnLoad, Waiter],
 )
 box::use(
   app / logic / functions[render_info],
@@ -54,6 +54,20 @@ box::use(
 
 fillable_panel <- function(...) {
   as_fill_carrier(nav_panel(...))
+}
+
+# Full-page loading splash, reused by the on-load waiter and the waiter shown
+# while the database panels are built and their (hidden) outputs pre-render.
+splash_html <- function() {
+  div(
+    class = "waiter-splash",
+    tags$img(
+      src = "static/images/PhyloTrace_flat_256.png",
+      width = "200px",
+      height = "200px"
+    ),
+    div(class = "waiter-splash-title", "PhyloTrace")
+  )
 }
 
 # shinyFiles asset stripping logic
@@ -73,17 +87,7 @@ ui <- function(id) {
 
   tagList(
     useWaiter(),
-    waiterShowOnLoad(
-      html = div(
-        class = "waiter-splash",
-        tags$img(
-          src = "static/images/PhyloTrace_flat_256.png",
-          width = "200px",
-          height = "200px"
-        ),
-        div(class = "waiter-splash-title", "PhyloTrace")
-      )
-    ),
+    waiterShowOnLoad(html = splash_html()),
     page_navbar(
       id = ns("tabs"),
       title = div(
@@ -266,6 +270,13 @@ server <- function(id) {
     })
 
     observeEvent(STARTUP_vals$load_database(), {
+      # Cover the whole page with the same splash used on initial load. The
+      # panel HTML below is built synchronously here; the outputs inside those
+      # panels that opt out of suspendWhenHidden pre-render on the following
+      # flushes, i.e. underneath this splash.
+      w <- Waiter$new(id = NULL, html = splash_html())
+      w$show()
+
       app_panels <- list(
         fillable_panel(
           "Database Browser",
@@ -362,6 +373,11 @@ server <- function(id) {
         pretty = TRUE,
         auto_unbox = TRUE
       )
+
+      # The load is near-instant, so hold the splash for a short buffer to read
+      # as a deliberate loading step. Hiding asynchronously via later() keeps the
+      # show and hide in separate flushes so the splash is actually painted.
+      later::later(function() w$hide(), delay = 1)
     })
 
     # Increment the shared reset signal so every subscribed module observer

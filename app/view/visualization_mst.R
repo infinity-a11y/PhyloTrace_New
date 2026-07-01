@@ -282,6 +282,36 @@ ui <- function(id, generate_id) {
         )
       )
     ),
+    # Canvas sizing (moved off the server to keep plot_area from rebuilding on
+    # every resize). A ResizeObserver watches the stage; the visNetwork element
+    # width is set to height / aspect, matching the old server-side formula. The
+    # aspect ratio is tracked from the slider's input events (default 0.6). A
+    # window 'resize' is dispatched so htmlwidgets re-fits the canvas.
+    tags$script(
+      shiny::HTML(
+        paste0(
+          "(function(){",
+          "var out='",
+          ns("mst_plot"),
+          "';var stage='",
+          ns("plot_stage"),
+          "';var aspectId='",
+          ns("mst_aspect_ratio"),
+          "';var aspect=0.6;",
+          "function fit(){var s=document.getElementById(stage);",
+          "var e=document.getElementById(out);if(!s||!e)return;",
+          "var h=s.clientHeight;if(!h)return;",
+          "e.style.width=Math.round(h/aspect)+'px';",
+          "window.dispatchEvent(new Event('resize'));}",
+          "var ro=window.ResizeObserver?new ResizeObserver(fit):null;",
+          "var w=setInterval(function(){var s=document.getElementById(stage);",
+          "if(s){clearInterval(w);if(ro)ro.observe(s);fit();}},100);",
+          "$(document).on('shiny:inputchanged',function(e){",
+          "if(e.name===aspectId){aspect=e.value;fit();}});",
+          "})();"
+        )
+      )
+    ),
     card(
       full_screen = TRUE,
       class = "plot-card",
@@ -453,20 +483,10 @@ server <- function(
         )
       )
 
-      # Canvas width derives from the panel height and the aspect-ratio control;
-      # the height is only known after a first render, so fall back until the
-      # browser reports it.
-      aspect <- if (is.null(input$mst_aspect_ratio)) {
-        0.6
-      } else {
-        input$mst_aspect_ratio
-      }
-      h <- session$clientData[[paste0("output_", ns("mst_plot"), "_height")]]
-      width <- if (!is.null(h)) {
-        as.integer(h * (1 / aspect))
-      } else {
-        as.integer(500 * aspect)
-      }
+      # The canvas fills the stage height; its width (which enforces the
+      # aspect ratio) is set client-side from the measured height — see the
+      # sizing script in ui(). Keeping the sizing off the server means this
+      # container is built once and never rebuilt on resize or ratio changes.
       div(
         class = "viz-plot-stage",
         id = ns("plot_stage"),
@@ -475,7 +495,7 @@ server <- function(
         visNetworkOutput(
           ns("mst_plot"),
           height = "100%",
-          width = paste0(width, "px")
+          width = "100%"
         ),
         # Hidden target the export action button clicks to start the download.
         div(
